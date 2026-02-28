@@ -217,9 +217,13 @@ function updateSidePanel(feature, level) {
         document.getElementById("alt-val").innerText = `${stats.altitude.toFixed(1)} m`;
         document.getElementById("pente-val").innerText = `${stats.pente.toFixed(1)} %`;
 
-        // 2. Calcul du Top 5 des types de parcelles
-        const top5Html = calculateTop5(stats.parcelles_details);
-        document.getElementById("top-prairies").innerHTML = top5Html;
+
+
+        // 1. Calculer les données du Top 5 (retourne un tableau d'objets maintenant)
+        const top5Data = calculateTop5Data(stats.parcelles_details);
+        
+        // 2. Appeler la fonction D3 pour dessiner/mettre à jour le graphique
+        drawTop5Chart(top5Data, "#top-prairies-chart");
     } else {
         document.getElementById("nb-parcelles").innerText = "0";
         document.getElementById("alt-val").innerText = "-";
@@ -761,18 +765,92 @@ async function jumpToLocation(type, code, name) {
             }
         }
     } catch (err) {
-        console.error("❌ Erreur lors du saut via API :", err);
+        console.error("Erreur lors du saut via API :", err);
     }
 
     d3.select("#search-bar").property("value", "");
     d3.select("#search-results").style("display", "none");
 }
 
-function calculateTop5(detailsString) {
-    if (!detailsString) return "<li>Aucune donnée</li>";
+
+function drawTop5Chart(data, containerSelector) {
+    const container = d3.select(containerSelector);
+    
+    // 1. ZÉRO MARGE (sauf un petit 5px pour ne pas coller aux bords)
+    const margin = { top: 5, right: 5, bottom: 5, left: 5 };
+    const width = container.node().getBoundingClientRect().width - margin.left - margin.right;
+    const height = 200 - margin.top - margin.bottom;
+
+    container.selectAll("svg").remove(); // On repart à neuf
+    const svg = container.append("svg")
+        .attr("width", width + margin.left + margin.right)
+        .attr("height", height + margin.top + margin.bottom)
+        .append("g")
+        .attr("transform", `translate(${margin.left},${margin.top})`);
+
+    // 2. Échelles
+    const y = d3.scaleBand()
+        .domain(data.map(d => d.culture))
+        .range([0, height])
+        .padding(0.15); // Espace fin entre les barres
+
+    const x = d3.scaleLinear()
+        .domain([0, d3.max(data, d => d.surface)])
+        .range([0, width]);
+
+    const colorScale = d3.scaleOrdinal()
+        .range(["#3b82f6", "#6366f1", "#8b5cf6", "#a855f7", "#d946ef"]); // Palette Indigo/Violet moderne
+
+    // 3. Tooltip
+    let tooltip = d3.select(".chart-tooltip");
+    if (tooltip.empty()) tooltip = d3.select("body").append("div").attr("class", "chart-tooltip");
+
+    // 4. Dessin des barres
+    const barGroups = svg.selectAll(".bar-group")
+        .data(data)
+        .enter()
+        .append("g")
+        .attr("class", "bar-group")
+        .on("mousemove", function(event, d) {
+            tooltip.style("opacity", 1)
+                   .html(`${d.culture}`)
+                   .style("left", (event.pageX + 15) + "px")
+                   .style("top", (event.pageY - 15) + "px");
+            d3.select(this).select("rect").style("filter", "brightness(1.2)");
+        })
+        .on("mouseleave", function() {
+            tooltip.style("opacity", 0);
+            d3.select(this).select("rect").style("filter", "none");
+        });
+
+    // Le rectangle (La barre)
+    barGroups.append("rect")
+        .attr("x", 0)
+        .attr("y", d => y(d.culture))
+        .attr("height", y.bandwidth())
+        .attr("width", 0) // Animation de départ
+        .attr("fill", (d, i) => colorScale(i))
+        .attr("rx", 4)
+        .transition().duration(800)
+        .attr("width", d => Math.max(x(d.surface), 40)); // Minimum 40px pour voir le texte
+
+    // Le texte (La valeur à l'intérieur)
+    barGroups.append("text")
+        .attr("x", 10) // Décalage depuis la gauche de la barre
+        .attr("y", d => y(d.culture) + y.bandwidth() / 2)
+        .attr("dy", ".35em")
+        .attr("fill", "#333")
+        .style("font-weight", "bold")
+        .style("font-size", "12px")
+        .style("pointer-events", "none") // Pour que le survol traverse le texte
+        .text(d => `${d3.format(",.3f")(d.surface)} ha`);
+}
+
+
+function calculateTop5Data(detailsString) {
+    if (!detailsString) return []; // Retourne un tableau vide si pas de données
 
     const counts = {};
-    // On sépare par virgule, puis on nettoie les espaces
     detailsString.split(',').forEach(item => {
         const parts = item.trim().split(':');
         if (parts.length === 2) {
@@ -784,16 +862,9 @@ function calculateTop5(detailsString) {
         }
     });
 
-    const sorted = Object.entries(counts)
+    // Retourne le top 5 sous forme de tableau d'objets { culture: "Nom", surface: 123 }
+    return Object.entries(counts)
         .sort((a, b) => b[1] - a[1])
-        .slice(0, 5);
-
-    if (sorted.length === 0) return "<li>Aucune donnée</li>";
-
-    return sorted
-        .map(([type, surf]) => {
-            const ha = surf.toFixed(1);
-            return `<li>${type} : <strong>${ha} ha</strong></li>`;
-        })
-        .join('');
+        .slice(0, 5)
+        .map(([culture, surface]) => ({ culture, surface }));
 }
