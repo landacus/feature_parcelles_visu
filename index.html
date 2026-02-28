@@ -284,6 +284,10 @@
                 <div class="dropdown-content" id="prairie-checkboxes">
                     </div>
             </div>
+            
+            <button class="filter-mockup" id="btn-scatter">
+              📊 Altitude / Pente
+            </button>
 
             <div id="search-container" style="margin-left: auto;">
                 <input type="text" id="search-bar" placeholder="Rechercher un lieu...">
@@ -299,6 +303,10 @@
                 <div id="legend"></div>
                 <div id="tooltip"></div> 
                 <svg id="map"></svg>
+            </div>
+            
+            <div id="scatter-container" style="flex:1; display:none; background:white; position:relative;">
+                <svg id="scatter-svg" width="100%" height="100%"></svg>
             </div>
 
             <aside id="info-panel">
@@ -317,6 +325,20 @@
         </main>
     </div>
 
+    <div id="scatter-tooltip" 
+         style="
+            position:absolute;
+            background:rgba(0,0,0,0.8);
+            color:white;
+            padding:8px 12px;
+            border-radius:6px;
+            font-size:13px;
+            pointer-events:none;
+            opacity:0;
+            transition:opacity 0.2s;
+            z-index: 10000;
+         ">
+    </div>
     <script type="module" src="app.js"></script>
 </body>
 </html>

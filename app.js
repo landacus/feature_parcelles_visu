@@ -248,26 +248,45 @@ function drawFeatures(layer, features, className, clickHandler) {
         })
         .on("click", clickHandler)
         .on("mouseover", function(event, d) {
-            d3.select(this).raise();
+
+            // Reset all strokes at this level
+            layer.selectAll("path")
+                .style("stroke", "#fff")
+                .style("stroke-width", "0.5px");
+
+            // Highlight hovered one
+            d3.select(this)
+                .raise()
+                .style("stroke", "#000")
+                .style("stroke-width", "1px");
+
             tooltip.style("opacity", 1);
-            
-            // 2. PROTECTION DE L'INFOBULLE
-            const val = (d.properties && d.properties.value) ? d.properties.value[currentIndicator] : null;
+
+            const val = (d.properties && d.properties.value)
+                ? d.properties.value[currentIndicator]
+                : null;
+
             const label = currentIndicator === "altitude" ? "Altitude" : "Pente";
-            const unite = currentIndicator === "altitude" ? "m" : "°"; // Changé ° en % pour la pente si besoin
-            
-            // On affiche la valeur si elle existe, sinon "Pas de données"
-            const displayVal = val !== null ? `${val.toFixed(1)} ${unite}` : "Donnée indisponible";
-            
-            tooltip.html(`<strong>${d.properties.nom || d.properties.name}</strong><br>${label} : ${displayVal}`);
+            const unite = currentIndicator === "altitude" ? "m" : "°";
+
+            const displayVal = val !== null
+                ? `${val.toFixed(1)} ${unite}`
+                : "Donnée indisponible";
+
+            tooltip.html(`<strong>${d.properties.nom}</strong><br>${label} : ${displayVal}`);
+        })
+        .on("mouseout", function() {
+
+            d3.select(this)
+                .style("stroke", "#fff")
+                .style("stroke-width", "0.5px");
+
+            tooltip.style("opacity", 0);
         })
         .on("mousemove", function(event) {
             const [x, y] = d3.pointer(event, document.getElementById('map-container'));
             tooltip.style("left", (x + 15) + "px")
                    .style("top", (y - 30) + "px");
-        })
-        .on("mouseout", function() {
-            tooltip.style("opacity", 0);
         });
 }
 
@@ -884,4 +903,162 @@ function calculateTop5Data(detailsString) {
             alt: stats.alt,
             pente: stats.pente 
         }));
+}
+
+// ===============================
+// TOGGLE MAP / SCATTER
+// ===============================
+
+const mapContainer = document.getElementById("map-container");
+const scatterContainer = document.getElementById("scatter-container");
+
+document.getElementById("btn-scatter").addEventListener("click", () => {
+    if (scatterContainer.style.display === "none") {
+        showScatterView();
+    } else {
+        showMapView();
+    }
+});
+
+function showScatterView() {
+    mapContainer.style.display = "none";
+    scatterContainer.style.display = "block";
+    renderScatter();
+}
+
+function showMapView() {
+    scatterContainer.style.display = "none";
+    mapContainer.style.display = "block";
+}
+
+function renderScatter() {
+
+    const svg = d3.select("#scatter-svg");
+    svg.selectAll("*").remove(); // reset
+
+    const width = document.getElementById("scatter-container").clientWidth;
+    const height = document.getElementById("scatter-container").clientHeight;
+
+    const margin = { top: 40, right: 40, bottom: 60, left: 70 };
+
+    const gScatter = svg.append("g")
+        .attr("transform", `translate(${margin.left},${margin.top})`);
+
+    const innerWidth = width - margin.left - margin.right;
+    const innerHeight = height - margin.top - margin.bottom;
+
+    // On récupère les features actuellement affichées
+    let features = [];
+
+    if (currentLevel === "region") {
+        features = layerRegions.selectAll("path").data();
+    } else if (currentLevel === "department") {
+        features = layerDepts.selectAll("path").data();
+    } else {
+        features = layerCommunes.selectAll("path").data();
+    }
+
+    // On filtre celles qui ont des données
+    const data = features
+        .filter(f => f.properties.value)
+        .map(f => ({
+            altitude: f.properties.value.altitude,
+            pente: f.properties.value.pente,
+            nom: f.properties.nom,
+            feature: f
+        }));
+        
+    const tooltip = d3.select("#scatter-tooltip");
+
+    if (data.length === 0) return;
+
+    const x = d3.scaleLinear()
+        .domain(d3.extent(data, d => d.altitude))
+        .range([0, innerWidth]);
+
+    const y = d3.scaleLinear()
+        .domain(d3.extent(data, d => d.pente))
+        .range([innerHeight, 0]);
+
+    // Axes
+    gScatter.append("g")
+        .attr("transform", `translate(0,${innerHeight})`)
+        .call(d3.axisBottom(x));
+
+    gScatter.append("g")
+        .call(d3.axisLeft(y));
+
+    // Points
+    gScatter.selectAll("circle")
+    .data(data)
+    .enter()
+    .append("circle")
+    .attr("cx", d => x(d.altitude))
+    .attr("cy", d => y(d.pente))
+    .attr("r", 4)
+    .attr("fill", "#007bff")
+    .attr("opacity", 0.7)
+    .on("mouseover", function(event, d) {
+        d3.select(this)
+            .attr("r", 7)
+            .attr("opacity", 1);
+
+        tooltip
+            .style("opacity", 1)
+            .html(`
+                <strong>${d.nom}</strong><br>
+                Altitude: ${d.altitude.toFixed(1)} m<br>
+                Pente: ${d.pente.toFixed(2)}°
+            `);
+    })
+    .on("mousemove", function(event) {
+        tooltip
+            .style("left", (event.pageX + 15) + "px")
+            .style("top", (event.pageY - 28) + "px");
+    })
+    .on("mouseout", function() {
+        d3.select(this)
+            .attr("r", 4)
+            .attr("opacity", 0.7);
+
+        tooltip
+            .style("opacity", 0);
+    })
+    .on("click", function(event, d) {
+
+        // Highlight clicked dot
+        d3.selectAll("#scatter-svg circle")
+            .attr("stroke", null);
+
+        d3.select(this)
+            .attr("stroke", "black")
+            .attr("stroke-width", 2);
+
+        if (currentLevel === "region") {
+            handleRegionClick(null, d.feature);
+        } 
+        else if (currentLevel === "department") {
+            handleDeptClick(null, d.feature);
+        } 
+        else {
+            handleCommuneClick(null, d.feature);
+        }
+
+        // Optional: switch back to map view automatically
+        showMapView();
+    });
+
+    // Labels axes
+    svg.append("text")
+        .attr("x", width / 2)
+        .attr("y", height - 10)
+        .attr("text-anchor", "middle")
+        .text("Altitude moyenne (m)");
+
+    svg.append("text")
+        .attr("transform", "rotate(-90)")
+        .attr("x", -height / 2)
+        .attr("y", 20)
+        .attr("text-anchor", "middle")
+        .text("Pente moyenne (°)");
 }
