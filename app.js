@@ -201,71 +201,31 @@ svg.call(zoom);
 
 
 // --- MISE À JOUR DU PANNEAU LATÉRAL DYNAMIQUE ---
-function updateSidePanel(feature, levelName, currentMax) {
-    // SÉCURITÉ : Si feature est null ou undefined, on arrête tout
-    if (!feature || !feature.properties) {
-        console.warn(`updateSidePanel : Aucune donnée pour le niveau ${level}`);
-        document.getElementById("panel-title").innerText = "Sélectionnez une zone";
-        return;
+function updateSidePanel(feature, level) {
+    if (!feature || !feature.properties) return;
+
+    const props = feature.properties;
+    const stats = props.value; // Données renvoyées par DuckDB
+
+    // Titre et Niveau
+    document.getElementById("info-title").innerText = props.nom || props.name;
+    document.getElementById("panel-level").innerText = level;
+
+    if (stats) {
+        // 1. Chiffres clés
+        document.getElementById("nb-parcelles").innerText = stats.nb_parcelles.toLocaleString();
+        document.getElementById("alt-val").innerText = `${stats.altitude.toFixed(1)} m`;
+        document.getElementById("pente-val").innerText = `${stats.pente.toFixed(1)} %`;
+
+        // 2. Calcul du Top 5 des types de parcelles
+        const top5Html = calculateTop5(stats.parcelles_details);
+        document.getElementById("top-prairies").innerHTML = top5Html;
+    } else {
+        document.getElementById("nb-parcelles").innerText = "0";
+        document.getElementById("alt-val").innerText = "-";
+        document.getElementById("pente-val").innerText = "-";
+        document.getElementById("top-prairies").innerHTML = "<li>Aucune donnée</li>";
     }
-    const title = d3.select("#info-title");
-    const content = d3.select("#info-content");
-    const typePrairie = feature.properties.type_prairie;
-
-    content.html(`
-        <div class="data-row"><strong>Type :</strong> <span>${typePrairie}</span></div>
-        `);
-
-    if (!feature) {
-        title.text("Vue globale");
-        content.html('<p style="color: #6c757d;">Cliquez sur une région ou un département pour afficher les détails.</p>');
-        return;
-    }
-
-    const nom = feature.properties.nom;
-    
-    // On récupère la valeur selon l'indicateur sélectionné dans le menu
-    const val = feature.properties.value[currentIndicator];
-
-    // Configuration dynamique du label et de l'unité
-    const isAltitude = currentIndicator === "altitude";
-    const label = isAltitude ? "Altitude moyenne" : "Pente moyenne";
-    const unite = isAltitude ? "m" : "°";
-
-    title.text(nom);
-    content.html(`
-        <div class="data-row"><strong>Niveau :</strong> <span>${levelName}</span></div>
-        <div class="data-row">
-            <strong>${label} :</strong> 
-            <span style="color:#007bff; font-weight:bold; font-size: 16px;">${val} ${unite}</span>
-        </div>
-        <hr style="border:0; border-top:1px solid #e9ecef; margin: 20px 0;">
-        <p style="font-size: 13px; color: #6c757d; margin-bottom: 5px;">Proportion par rapport au maximum affiché (${currentMax} ${unite}) :</p>
-        <div id="bar-chart-container" style="height: 60px; display:flex; align-items:flex-end; gap:10px; margin-top: 10px;"></div>
-    `);
-
-    // --- Petit graphique D3.js ---
-    const chartContainer = d3.select("#bar-chart-container");
-    const barWidth = 40;
-    const chartHeight = 60;
-
-    // Sécurité pour éviter une division par zéro si le max est 0
-    const heightRatio = currentMax > 0 ? (val / currentMax) : 0;
-
-    // Barre représentant la zone cliquée
-    chartContainer.append("div")
-        .style("width", `${barWidth}px`)
-        .style("height", `${heightRatio * chartHeight}px`)
-        .style("background-color", colorScale(val)) // Utilise la même couleur que la carte !
-        .style("border", "1px solid #333")
-        .style("border-radius", "3px 3px 0 0")
-        .attr("title", `Valeur : ${val} ${unite}`);
-
-    // Texte sous la barre
-    chartContainer.append("span")
-        .style("font-size", "12px")
-        .style("font-weight", "bold")
-        .text("Zone sélectionnée");
 }
 
 
@@ -806,4 +766,34 @@ async function jumpToLocation(type, code, name) {
 
     d3.select("#search-bar").property("value", "");
     d3.select("#search-results").style("display", "none");
+}
+
+function calculateTop5(detailsString) {
+    if (!detailsString) return "<li>Aucune donnée</li>";
+
+    const counts = {};
+    // On sépare par virgule, puis on nettoie les espaces
+    detailsString.split(',').forEach(item => {
+        const parts = item.trim().split(':');
+        if (parts.length === 2) {
+            const type = parts[0];
+            const surf = parseFloat(parts[1]);
+            if (!isNaN(surf)) {
+                counts[type] = (counts[type] || 0) + surf;
+            }
+        }
+    });
+
+    const sorted = Object.entries(counts)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 5);
+
+    if (sorted.length === 0) return "<li>Aucune donnée</li>";
+
+    return sorted
+        .map(([type, surf]) => {
+            const ha = surf.toFixed(1);
+            return `<li>${type} : <strong>${ha} ha</strong></li>`;
+        })
+        .join('');
 }

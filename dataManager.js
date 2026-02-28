@@ -73,6 +73,9 @@ export async function getAggregatedData(levelColumn, filterTypes = []) {
 
         const query = `
             SELECT 
+                COUNT(*) as nb_parcelles,
+                string_agg(libelle_group || ':' || CAST(surf_parc AS TEXT), ', ') as parcelles_details,
+                SUM(CAST(surf_parc AS FLOAT)) as surface_totale,
                 CAST(${levelColumn} AS TEXT) as code,
                 SUM(CAST(alt_mean AS FLOAT) * CAST(surf_parc AS FLOAT)) / SUM(CAST(surf_parc AS FLOAT)) as altitude,
                 SUM(CAST(pente_mean AS FLOAT) * CAST(surf_parc AS FLOAT)) / SUM(CAST(surf_parc AS FLOAT)) as pente
@@ -96,9 +99,11 @@ export async function getCommunesData(deptCode) {
     const query = `
         SELECT 
             com_parc as code,
+            COUNT(*) as nb_parcelles,
+            string_agg(libelle_group || ':' || CAST(surf_parc AS TEXT), ', ') as parcelles_details,
+            SUM(CAST(surf_parc AS FLOAT)) as surface_totale,
             SUM(CAST(alt_mean as FLOAT) * CAST(surf_parc as FLOAT)) / SUM(CAST(surf_parc as FLOAT)) as altitude,
             SUM(CAST(pente_mean as FLOAT) * CAST(surf_parc as FLOAT)) / SUM(CAST(surf_parc as FLOAT)) as pente,
-            mode(libelle_group) as type_prairie
         FROM 'data.parquet'
         WHERE dep_parc = '${deptCode}'
         GROUP BY com_parc`;
