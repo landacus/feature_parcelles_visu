@@ -71,7 +71,10 @@ const URL_ALL_DEPTS = "https://raw.githubusercontent.com/gregoiredavid/france-ge
 const getRegionDeptsMetaUrl = (regionCode) => `https://geo.api.gouv.fr/regions/${regionCode}/departements`;
 const getCommunesUrl = (deptCode) => `https://geo.api.gouv.fr/departements/${deptCode}/communes?format=geojson&geometry=contour`;
 
-const colorScale = d3.scaleSequential(d3.interpolateBlues);
+const customBlueInterpolator = t => d3.interpolateBlues(d3.scaleLinear().domain([0, 1]).range([0.2, 1])(t));
+const customPurpleInterpolator = t => d3.interpolatePurples(d3.scaleLinear().domain([0, 1]).range([0.2, 1])(t));
+
+const colorScale = d3.scaleSequential(customPurpleInterpolator);
 const tooltip = d3.select("#tooltip");
 // Variable pour suivre l'indicateur sélectionné par l'utilisateur
 let currentIndicator = "altitude"; 
@@ -605,7 +608,7 @@ d3.select("#btn-back").on("click", async function() {
 // --- GESTION DU FILTRE INDICATEUR ---
 d3.select("#indicator-select").on("change", function() {
     currentIndicator = this.value; // "altitude" ou "pente"
-    
+    colorScale.interpolator(currentIndicator === "altitude" ? customPurpleInterpolator : customBlueInterpolator);
     // On détermine quelles données sont actuellement affichées à l'écran
     let activeFeatures = [];
     if (currentLevel === "commune") {
