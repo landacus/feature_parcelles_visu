@@ -24,6 +24,7 @@ async function startApp() {
         // Si prairieTypes était vide, selectedPrairies le sera aussi, 
         // d'où la sécurité ajoutée dans le DataManager ci-dessus.
         const regionStats = await DataManager.getAggregatedData('reg_parc', selectedPrairies);
+        console.log("Stats régionales récupérées :", regionStats);
 
         allRegionsFeatures.forEach(f => {
             const stats = regionStats.get(String(f.properties.code));
@@ -440,8 +441,9 @@ async function handleDeptClick(event, d) {
     // On réutilise la variable geojsonData chargée ici pour éviter un second fetch
     const [geojsonData, statsMap] = await Promise.all([
         d3.json(getCommunesUrl(deptCode)),
-        DataManager.getCommunesData(deptCode)
+        DataManager.getCommunesData(deptCode, selectedPrairies)
     ]);
+    console.log("StatsMap générée :", statsMap)
 
     // Sécurité : si l'utilisateur a cliqué ailleurs pendant le chargement
     if (activeDepartment && String(activeDepartment.properties.code) !== deptCode) return;
@@ -775,47 +777,51 @@ async function jumpToLocation(type, code, name) {
 
 function drawTop5Chart(data, containerSelector) {
     const container = d3.select(containerSelector);
-    
-    // 1. ZÉRO MARGE (sauf un petit 5px pour ne pas coller aux bords)
     const margin = { top: 5, right: 5, bottom: 5, left: 5 };
     const width = container.node().getBoundingClientRect().width - margin.left - margin.right;
     const height = 200 - margin.top - margin.bottom;
 
-    container.selectAll("svg").remove(); // On repart à neuf
+    container.selectAll("svg").remove();
     const svg = container.append("svg")
         .attr("width", width + margin.left + margin.right)
         .attr("height", height + margin.top + margin.bottom)
         .append("g")
         .attr("transform", `translate(${margin.left},${margin.top})`);
 
-    // 2. Échelles
     const y = d3.scaleBand()
         .domain(data.map(d => d.culture))
         .range([0, height])
-        .padding(0.15); // Espace fin entre les barres
+        .padding(0.15);
 
     const x = d3.scaleLinear()
         .domain([0, d3.max(data, d => d.surface)])
         .range([0, width]);
 
     const colorScale = d3.scaleOrdinal()
-        .range(["#3b82f6", "#6366f1", "#8b5cf6", "#a855f7", "#d946ef"]); // Palette Indigo/Violet moderne
+        .range(["#3b82f6", "#6366f1", "#8b5cf6", "#a855f7", "#d946ef"]);
 
-    // 3. Tooltip
     let tooltip = d3.select(".chart-tooltip");
     if (tooltip.empty()) tooltip = d3.select("body").append("div").attr("class", "chart-tooltip");
 
-    // 4. Dessin des barres
     const barGroups = svg.selectAll(".bar-group")
         .data(data)
         .enter()
         .append("g")
         .attr("class", "bar-group")
         .on("mousemove", function(event, d) {
+            // TOOLTIP AVANCÉ ICI
             tooltip.style("opacity", 1)
-                   .html(`${d.culture}`)
+                   .html(`
+                    <div style="font-weight:bold; margin-bottom:5px; border-bottom:1px solid #555;">${d.culture}</div>
+                    <div style="display:grid; grid-template-columns: 1fr auto; gap:8px; font-size:12px;">
+                        <span>Surface:</span> <b style="text-align:right">${d3.format(",.3f")(d.surface)} ha</b>
+                        <span>Altitude:</span> <b style="text-align:right">${d.alt.toFixed(0)} m</b>
+                        <span>Pente:</span> <b style="text-align:right">${d.pente.toFixed(1)} %</b>
+                    </div>
+                   `)
                    .style("left", (event.pageX + 15) + "px")
                    .style("top", (event.pageY - 15) + "px");
+            
             d3.select(this).select("rect").style("filter", "brightness(1.2)");
         })
         .on("mouseleave", function() {
@@ -823,48 +829,59 @@ function drawTop5Chart(data, containerSelector) {
             d3.select(this).select("rect").style("filter", "none");
         });
 
-    // Le rectangle (La barre)
     barGroups.append("rect")
         .attr("x", 0)
         .attr("y", d => y(d.culture))
         .attr("height", y.bandwidth())
-        .attr("width", 0) // Animation de départ
+        .attr("width", 0)
         .attr("fill", (d, i) => colorScale(i))
         .attr("rx", 4)
         .transition().duration(800)
-        .attr("width", d => Math.max(x(d.surface), 40)); // Minimum 40px pour voir le texte
+        .attr("width", d => Math.max(x(d.surface), 40));
 
-    // Le texte (La valeur à l'intérieur)
     barGroups.append("text")
-        .attr("x", 10) // Décalage depuis la gauche de la barre
+        .attr("x", 10)
         .attr("y", d => y(d.culture) + y.bandwidth() / 2)
         .attr("dy", ".35em")
         .attr("fill", "#333")
         .style("font-weight", "bold")
         .style("font-size", "12px")
-        .style("pointer-events", "none") // Pour que le survol traverse le texte
+        .style("pointer-events", "none")
         .text(d => `${d3.format(",.3f")(d.surface)} ha`);
 }
 
 
 function calculateTop5Data(detailsString) {
-    if (!detailsString) return []; // Retourne un tableau vide si pas de données
+    if (!detailsString) return [];
 
     const counts = {};
+    // On découpe chaque culture
     detailsString.split(',').forEach(item => {
         const parts = item.trim().split(':');
-        if (parts.length === 2) {
-            const type = parts[0];
-            const surf = parseFloat(parts[1]);
+        // On attend maintenant 4 parties : Nom, Surface, Altitude, Pente
+        if (parts.length >= 2) {
+            const type = parts[0].trim();
+            const surf = parseFloat(parts[1]) || 0;
+            const alt = parseFloat(parts[2]) || 0;  // Nouvelle donnée
+            const pente = parseFloat(parts[3]) || 0; // Nouvelle donnée
+            
             if (!isNaN(surf)) {
-                counts[type] = (counts[type] || 0) + surf;
+                counts[type] = {
+                    surface: (counts[type]?.surface || 0) + surf,
+                    alt: alt,   // Note: ici on prend la valeur brute, 
+                    pente: pente // idéalement ton SQL doit déjà envoyer la moyenne
+                };
             }
         }
     });
 
-    // Retourne le top 5 sous forme de tableau d'objets { culture: "Nom", surface: 123 }
     return Object.entries(counts)
-        .sort((a, b) => b[1] - a[1])
+        .sort((a, b) => b[1].surface - a[1].surface)
         .slice(0, 5)
-        .map(([culture, surface]) => ({ culture, surface }));
+        .map(([culture, stats]) => ({ 
+            culture, 
+            surface: stats.surface,
+            alt: stats.alt,
+            pente: stats.pente 
+        }));
 }

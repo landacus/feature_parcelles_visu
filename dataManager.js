@@ -57,56 +57,81 @@ async function fetchAndMerge() {
  * Récupère les données agrégées pour les régions ou départements
  * @param {string} levelColumn 'reg_parc' ou 'dep_parc'
  */
-// dataManager.js
+
+
 export async function getAggregatedData(levelColumn, filterTypes = []) {
-    // SÉCURITÉ ABSOLUE : Si filterTypes n'est pas un tableau valide ou est vide
-    if (!Array.isArray(filterTypes) || filterTypes.length === 0) {
-        console.warn("Calcul ignoré : aucun type de prairie sélectionné.");
-        return new Map(); 
-    }
+    if (!Array.isArray(filterTypes) || filterTypes.length === 0) return new Map();
 
     try {
-        // Nettoyage des valeurs pour éviter les injections et les erreurs de quote
         const typesList = filterTypes
             .map(t => `'${String(t).replace(/'/g, "''")}'`)
             .join(',');
 
+        // 1. On calcule les stats par (Zone + Culture)
+        // 2. On agrège ensuite par Zone
         const query = `
+            WITH stats_par_culture AS (
+                SELECT 
+                    ${levelColumn} as area_code,
+                    libelle_group,
+                    COUNT(*) as cnt,
+                    SUM(CAST(surf_parc AS FLOAT)) as s_type,
+                    SUM(CAST(alt_mean AS FLOAT) * CAST(surf_parc AS FLOAT)) / SUM(CAST(surf_parc AS FLOAT)) as a_type,
+                    SUM(CAST(pente_mean AS FLOAT) * CAST(surf_parc AS FLOAT)) / SUM(CAST(surf_parc AS FLOAT)) as p_type
+                FROM 'data.parquet'
+                WHERE libelle_group IN (${typesList})
+                GROUP BY ${levelColumn}, libelle_group
+            )
             SELECT 
-                COUNT(*) as nb_parcelles,
-                string_agg(libelle_group || ':' || CAST(surf_parc AS TEXT), ', ') as parcelles_details,
-                SUM(CAST(surf_parc AS FLOAT)) as surface_totale,
-                CAST(${levelColumn} AS TEXT) as code,
-                SUM(CAST(alt_mean AS FLOAT) * CAST(surf_parc AS FLOAT)) / SUM(CAST(surf_parc AS FLOAT)) as altitude,
-                SUM(CAST(pente_mean AS FLOAT) * CAST(surf_parc AS FLOAT)) / SUM(CAST(surf_parc AS FLOAT)) as pente
-            FROM 'data.parquet'
-            WHERE libelle_group IN (${typesList})
-            GROUP BY ${levelColumn}`;
+                area_code as code,
+                SUM(cnt) as nb_parcelles,
+                SUM(s_type) as surface_totale,
+                -- Moyennes globales de la zone
+                SUM(a_type * s_type) / SUM(s_type) as altitude,
+                SUM(p_type * s_type) / SUM(s_type) as pente,
+                -- Chaîne formatée pour D3 : Nom:Surface:Alt:Pente
+                string_agg(libelle_group || ':' || s_type || ':' || a_type || ':' || p_type, ', ') as parcelles_details
+            FROM stats_par_culture
+            GROUP BY area_code`;
         
         const result = await conn.query(query);
         return new Map(result.toArray().map(r => [r.code, r]));
     } catch (err) {
-        console.error("Erreur SQL DuckDB :", err);
+        console.error("Erreur SQL getAggregatedData :", err);
         return new Map();
     }
 }
 
-/**
- * Récupère les données par commune pour un département donné
- */
-export async function getCommunesData(deptCode) {
+export async function getCommunesData(deptCode, filterTypes = []) {
+    if (!Array.isArray(filterTypes) || filterTypes.length === 0) return new Map();
+
     // Ici on filtre sur le département et on groupe par code commune (com_parc)
+    const typesList = filterTypes
+        .map(t => `'${String(t).replace(/'/g, "''")}'`)
+        .join(',');
+
     const query = `
+        WITH stats_par_culture AS (
+            SELECT 
+                com_parc as area_code,
+                libelle_group,
+                COUNT(*) as cnt,
+                SUM(CAST(surf_parc AS FLOAT)) as s_type,
+                SUM(CAST(alt_mean AS FLOAT) * CAST(surf_parc AS FLOAT)) / SUM(CAST(surf_parc AS FLOAT)) as a_type,
+                SUM(CAST(pente_mean AS FLOAT) * CAST(surf_parc AS FLOAT)) / SUM(CAST(surf_parc AS FLOAT)) as p_type
+            FROM 'data.parquet'
+            WHERE libelle_group IN (${typesList}) AND dep_parc = '${deptCode}'
+            GROUP BY com_parc, libelle_group
+        )
         SELECT 
-            com_parc as code,
-            COUNT(*) as nb_parcelles,
-            string_agg(libelle_group || ':' || CAST(surf_parc AS TEXT), ', ') as parcelles_details,
-            SUM(CAST(surf_parc AS FLOAT)) as surface_totale,
-            SUM(CAST(alt_mean as FLOAT) * CAST(surf_parc as FLOAT)) / SUM(CAST(surf_parc as FLOAT)) as altitude,
-            SUM(CAST(pente_mean as FLOAT) * CAST(surf_parc as FLOAT)) / SUM(CAST(surf_parc as FLOAT)) as pente,
-        FROM 'data.parquet'
-        WHERE dep_parc = '${deptCode}'
-        GROUP BY com_parc`;
+            area_code as code,
+            SUM(cnt) as nb_parcelles,
+            SUM(s_type) as surface_totale,
+            SUM(a_type * s_type) / SUM(s_type) as altitude,
+            SUM(p_type * s_type) / SUM(s_type) as pente,
+            string_agg(libelle_group || ':' || s_type || ':' || a_type || ':' || p_type, ', ') as parcelles_details
+        FROM stats_par_culture
+        GROUP BY area_code`;
     
     const result = await conn.query(query);
     // On s'assure que le code est une chaîne (ex: "01001") pour matcher le GeoJSON
