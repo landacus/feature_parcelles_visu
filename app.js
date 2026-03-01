@@ -43,7 +43,6 @@ startApp(); // Lancement de l'application après l'initialisation des données
 
 const width = 800;
 const height = 800;
-
 const svg = d3.select("#map")
     .attr("viewBox", `0 0 ${width} ${height}`)
     .attr("preserveAspectRatio", "xMidYMid meet");
@@ -214,7 +213,8 @@ function updateSidePanel(feature, level) {
 
     if (stats) {
         // 1. Chiffres clés
-        document.getElementById("nb-parcelles").innerText = stats.nb_parcelles.toLocaleString();
+        // Formater le BigInt en ajoutant les séparateurs de milliers
+        document.getElementById("nb-parcelles").innerText = stats.nb_parcelles.toString().replace(/\B(?=(\d{3})+(?!\d))/g, " ");
         document.getElementById("alt-val").innerText = `${stats.altitude.toFixed(1)} m`;
         document.getElementById("pente-val").innerText = `${stats.pente.toFixed(1)} %`;
 
@@ -821,7 +821,7 @@ function drawTop5Chart(data, containerSelector) {
                    .html(`
                     <div style="font-weight:bold; margin-bottom:5px; border-bottom:1px solid #555;">${d.culture}</div>
                     <div style="display:grid; grid-template-columns: 1fr auto; gap:8px; font-size:12px;">
-                        <span>Surface:</span> <b style="text-align:right">${d3.format(",.3f")(d.surface)} ha</b>
+                        <span>Surface:</span> <b style="text-align:right">${d.surface.toFixed(3).toString().replace(/\B(?=(\d{3})+(?!\d))/g, " ")} ha</b>
                         <span>Altitude:</span> <b style="text-align:right">${d.alt.toFixed(0)} m</b>
                         <span>Pente:</span> <b style="text-align:right">${d.pente.toFixed(1)} %</b>
                     </div>
@@ -854,7 +854,7 @@ function drawTop5Chart(data, containerSelector) {
         .style("font-weight", "bold")
         .style("font-size", "12px")
         .style("pointer-events", "none")
-        .text(d => `${d3.format(",.3f")(d.surface)} ha`);
+        .text(d => `${d.surface.toFixed(3).toString().replace(/\B(?=(\d{3})+(?!\d))/g, " ")} ha`);
 }
 
 
