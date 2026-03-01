@@ -615,6 +615,7 @@ async function jumpToLocation(type, code) {
         } 
         
         else if (type === 'commune') {
+            const deptCode = cleanCode.substring(0, 2);
             let parentRegion = null;
             for (let reg of allRegionsFeatures) {
                 const deptsMeta = await d3.json(getRegionDeptsMetaUrl(reg.properties.code));
