@@ -671,18 +671,6 @@ d3.select("body").on("click", (event) => {
 });
 
 
-// app.js
-
-// Au changement d'une checkbox dans ton menu
-function onFilterChange() {
-    selectedPrairies = [];
-    d3.selectAll(".prairie-checkbox:checked").each(function() {
-        selectedPrairies.push(this.value);
-    });
-
-    // On relance la mise à jour des données selon le niveau actuel
-    refreshDataWithFilters();
-}
 
 async function refreshDataWithFilters() {
     let statsMap;
