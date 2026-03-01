@@ -2,6 +2,7 @@
 import * as DataManager from './dataManager.js';
 
 let selectedPrairies = [];
+let scatterHistory = [];
 async function startApp() {
     try {
         await DataManager.initData();
@@ -202,6 +203,7 @@ svg.call(zoom);
 
 // --- MISE À JOUR DU PANNEAU LATÉRAL DYNAMIQUE ---
 function updateSidePanel(feature, level) {
+    console.log(feature)
     if (!feature || !feature.properties) return;
 
     const props = feature.properties;
@@ -919,10 +921,10 @@ function showMapView() {
     mapContainer.style.display = "block";
 }
 
-function renderScatter() {
-
+async function renderScatter(customFeatures = null, fromBack = false) {   
+    
     const svg = d3.select("#scatter-svg");
-    svg.selectAll("*").remove(); // reset
+    svg.selectAll("*").remove();
 
     const width = document.getElementById("scatter-container").clientWidth;
     const height = document.getElementById("scatter-container").clientHeight;
@@ -935,18 +937,19 @@ function renderScatter() {
     const innerWidth = width - margin.left - margin.right;
     const innerHeight = height - margin.top - margin.bottom;
 
-    // On récupère les features actuellement affichées
-    let features = [];
+    // 🔹 Determine which features to use
+    let features = customFeatures;
 
-    if (currentLevel === "region") {
-        features = layerRegions.selectAll("path").data();
-    } else if (currentLevel === "department") {
-        features = layerDepts.selectAll("path").data();
-    } else {
-        features = layerCommunes.selectAll("path").data();
+    if (!features) {
+        if (currentLevel === "region") {
+            features = layerRegions.selectAll("path").data();
+        } else if (currentLevel === "department") {
+            features = layerDepts.selectAll("path").data();
+        } else {
+            features = layerCommunes.selectAll("path").data();
+        }
     }
 
-    // On filtre celles qui ont des données
     const data = features
         .filter(f => f.properties.value)
         .map(f => ({
@@ -955,17 +958,19 @@ function renderScatter() {
             nom: f.properties.nom,
             feature: f
         }));
-        
-    const tooltip = d3.select("#scatter-tooltip");
 
     if (data.length === 0) return;
 
+    const tooltip = d3.select("#scatter-tooltip");
+
     const x = d3.scaleLinear()
         .domain(d3.extent(data, d => d.altitude))
+        .nice()
         .range([0, innerWidth]);
 
     const y = d3.scaleLinear()
         .domain(d3.extent(data, d => d.pente))
+        .nice()
         .range([innerHeight, 0]);
 
     // Axes
@@ -978,65 +983,147 @@ function renderScatter() {
 
     // Points
     gScatter.selectAll("circle")
-    .data(data)
-    .enter()
-    .append("circle")
-    .attr("cx", d => x(d.altitude))
-    .attr("cy", d => y(d.pente))
-    .attr("r", 4)
-    .attr("fill", "#007bff")
-    .attr("opacity", 0.7)
-    .on("mouseover", function(event, d) {
-        d3.select(this)
-            .attr("r", 7)
-            .attr("opacity", 1);
+        .data(data)
+        .enter()
+        .append("circle")
+        .attr("cx", d => x(d.altitude))
+        .attr("cy", d => y(d.pente))
+        .attr("r", 5)
+        .attr("fill", "#007bff")
+        .attr("opacity", 0.7)
 
-        tooltip
-            .style("opacity", 1)
-            .html(`
-                <strong>${d.nom}</strong><br>
-                Altitude: ${d.altitude.toFixed(1)} m<br>
-                Pente: ${d.pente.toFixed(2)}°
-            `);
-    })
-    .on("mousemove", function(event) {
-        tooltip
-            .style("left", (event.pageX + 15) + "px")
-            .style("top", (event.pageY - 28) + "px");
-    })
-    .on("mouseout", function() {
-        d3.select(this)
-            .attr("r", 4)
-            .attr("opacity", 0.7);
+        // Hover
+        .on("mouseover", function(event, d) {
+            d3.select(this).attr("r", 8).attr("opacity", 1);
 
-        tooltip
-            .style("opacity", 0);
-    })
-    .on("click", function(event, d) {
+            tooltip.style("opacity", 1)
+                .html(`
+                    <strong>${d.nom}</strong><br>
+                    Altitude: ${d.altitude.toFixed(1)} m<br>
+                    Pente: ${d.pente.toFixed(1)} %
+                `);
+        })
+        .on("mousemove", function(event) {
+            tooltip
+                .style("left", (event.pageX + 15) + "px")
+                .style("top", (event.pageY - 28) + "px");
+        })
+        .on("mouseout", function() {
+            d3.select(this).attr("r", 5).attr("opacity", 0.7);
+            tooltip.style("opacity", 0);
+        })
 
-        // Highlight clicked dot
-        d3.selectAll("#scatter-svg circle")
-            .attr("stroke", null);
+        // 🚀 Drill-down click
+        .on("click", async function(event, d) {
 
-        d3.select(this)
-            .attr("stroke", "black")
-            .attr("stroke-width", 2);
+            d3.selectAll("#scatter-svg circle")
+                .attr("stroke", null);
 
-        if (currentLevel === "region") {
-            handleRegionClick(null, d.feature);
-        } 
-        else if (currentLevel === "department") {
-            handleDeptClick(null, d.feature);
-        } 
-        else {
-            handleCommuneClick(null, d.feature);
-        }
+            d3.select(this)
+                .attr("stroke", "black")
+                .attr("stroke-width", 2);
 
-        // Optional: switch back to map view automatically
-        showMapView();
-    });
+            // 🔹 REGION → Departments
+            if (currentLevel === "region") {
 
-    // Labels axes
+                scatterHistory.push({
+                    level: "region",
+                    features: features
+                });
+
+                const regCode = String(d.feature.properties.code);
+
+                const [deptsMeta, deptsStats] = await Promise.all([
+                    d3.json(getRegionDeptsMetaUrl(regCode)),
+                    DataManager.getAggregatedData('dep_parc', selectedPrairies)
+                ]);
+
+                const validCodes = deptsMeta.map(dep => String(dep.code));
+
+                const regionDepts = allDepartmentsGeojson.features
+                    .filter(f => validCodes.includes(String(f.properties.code)));
+
+                regionDepts.forEach(f => {
+                    f.properties.value =
+                        deptsStats.get(String(f.properties.code)) || null;
+                });
+
+                currentLevel = "department";
+
+                updateSidePanel(d.feature, "Région");
+                updateBackButton();
+                renderScatter(regionDepts);
+            }
+
+            // 🔹 DEPARTMENT → Communes
+            else if (currentLevel === "department") {
+
+                scatterHistory.push({
+                    level: "department",
+                    features: features
+                });
+
+                const deptCode = String(d.feature.properties.code);
+
+                const [geojsonData, statsMap] = await Promise.all([
+                    d3.json(getCommunesUrl(deptCode)),
+                    DataManager.getCommunesData(deptCode, selectedPrairies)
+                ]);
+
+                geojsonData.features.forEach(f => {
+                    f.properties.value =
+                        statsMap.get(String(f.properties.code)) || null;
+                });
+
+                currentLevel = "commune";
+                
+                updateSidePanel(d.feature, "Département");
+                updateBackButton();
+                renderScatter(geojsonData.features);
+            }
+
+            // 🔹 COMMUNE → Parcelles
+            else if (currentLevel === "commune") {
+
+                scatterHistory.push({
+                    level: "commune",
+                    features: features
+                });
+
+                const communeCode = String(d.feature.properties.code);
+
+                // 👇 Adjust this to your real data loader
+                const parcellesData = await DataManager.getParcellesData(
+                    communeCode,
+                    selectedPrairies
+                );
+
+                // Expecting an array of objects like:
+                // { id, altitude, pente, geometry, ... }
+
+                const parcellesFeatures = parcellesData
+                    .filter(p => p.altitude && p.pente)
+                    .map(p => ({
+                        type: "Feature",
+                        properties: {
+                            code: p.id,
+                            nom: `Parcelle ${p.id}`,
+                            value: {
+                                altitude: p.altitude,
+                                pente: p.pente
+                            }
+                        }
+                    }));
+
+                currentLevel = "parcelle";
+                
+                updateSidePanel(d.feature, "Parcelles");
+                updateBackButton();
+                renderScatter(parcellesFeatures);
+            }
+        });
+
+    // Axis labels
     svg.append("text")
         .attr("x", width / 2)
         .attr("y", height - 10)
@@ -1048,5 +1135,34 @@ function renderScatter() {
         .attr("x", -height / 2)
         .attr("y", 20)
         .attr("text-anchor", "middle")
-        .text("Pente moyenne (°)");
+        .text("Pente moyenne (%)");
+
+    updateBackButton();
+}
+
+function goBackScatter() {
+
+    if (scatterHistory.length === 0) return;
+
+    const previous = scatterHistory.pop();
+
+    currentLevel = previous.level;
+
+    renderScatter(previous.features, true);
+
+    updateBackButton();
+}
+
+document.getElementById("scatter-back-btn")
+    .addEventListener("click", goBackScatter);
+    
+function updateBackButton() {
+
+    const btn = document.getElementById("scatter-back-btn");
+
+    if (scatterHistory.length > 0) {
+        btn.style.display = "block";
+    } else {
+        btn.style.display = "none";
+    }
 }

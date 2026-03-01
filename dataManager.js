@@ -138,6 +138,49 @@ export async function getCommunesData(deptCode, filterTypes = []) {
     return new Map(result.toArray().map(r => [String(r.code).padStart(5, '0'), r]));
 }
 
+export async function getParcellesData(communeCode, filterTypes = []) {
+
+    if (!Array.isArray(filterTypes) || filterTypes.length === 0) {
+        return [];
+    }
+
+    const typesList = filterTypes
+        .map(t => `'${String(t).replace(/'/g, "''")}'`)
+        .join(',');
+
+    const query = `
+        SELECT
+            id_parcel as id,
+            com_parc as commune_code,
+            COUNT(*) as nb_cultures,
+            SUM(CAST(surf_parc AS FLOAT)) as surface_totale,
+            SUM(CAST(alt_mean AS FLOAT) * CAST(surf_parc AS FLOAT)) 
+                / SUM(CAST(surf_parc AS FLOAT)) as altitude,
+            SUM(CAST(pente_mean AS FLOAT) * CAST(surf_parc AS FLOAT)) 
+                / SUM(CAST(surf_parc AS FLOAT)) as pente,
+            string_agg(
+                libelle_group || ':' || surf_parc || ':' || alt_mean || ':' || pente_mean,
+                ', '
+            ) as parcelles_details
+        FROM 'data.parquet'
+        WHERE libelle_group IN (${typesList})
+            AND com_parc = '${communeCode}'
+        GROUP BY id_parcel, com_parc
+    `;
+
+    const result = await conn.query(query);
+
+    return result.toArray().map(r => ({
+        id: String(r.id),
+        commune_code: String(r.commune_code).padStart(5, '0'),
+        nb_parcelles: r.nb_cultures,
+        surface_totale: r.surface_totale,
+        altitude: r.altitude,
+        pente: r.pente,
+        parcelles_details: r.parcelles_details
+    }));
+}
+
 /**
  * Récupère la liste des types de prairies (groupes de culture)
  */
