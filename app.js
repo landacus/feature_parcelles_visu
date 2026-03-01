@@ -1,13 +1,12 @@
-// --- CONFIGURATION INITIALE ---
 import * as DataManager from './dataManager.js';
 
 let selectedPrairies = [];
 let scatterHistory = [];
+
+// Fonction pour le chargement initial de la carte et des données
 async function startApp() {
     try {
         await DataManager.initData();
-
-        // 1. Charger les ressources statiques et les types uniques
         const [regionsData, deptsData, prairieTypes] = await Promise.all([
             d3.json(URL_REGIONS),
             d3.json(URL_ALL_DEPTS),
@@ -17,19 +16,14 @@ async function startApp() {
         allDepartmentsGeojson = deptsData; 
         allRegionsFeatures = regionsData.features;
 
-        // 2. INITIALISATION DU FILTRE (remplit selectedPrairies)
-        // IMPORTANT : Vérifie que prairieTypes n'est pas vide ici
         initPrairieFilter(prairieTypes);
         
-        // 3. APPEL DUCKDB (On passe explicitement selectedPrairies)
-        // Si prairieTypes était vide, selectedPrairies le sera aussi, 
-        // d'où la sécurité ajoutée dans le DataManager ci-dessus.
         const regionStats = await DataManager.getAggregatedData('reg_parc', selectedPrairies);
         console.log("Stats régionales récupérées :", regionStats);
 
         allRegionsFeatures.forEach(f => {
             const stats = regionStats.get(String(f.properties.code));
-            f.properties.value = stats || null; // Utilise null pour le noir
+            f.properties.value = stats || null;
         });
 
         drawFeatures(layerRegions, allRegionsFeatures, "region", handleRegionClick);
@@ -40,8 +34,9 @@ async function startApp() {
     }
 }
 
-startApp(); // Lancement de l'application après l'initialisation des données
+startApp();
 
+// Configuration de la carte
 const width = 800;
 const height = 800;
 const svg = d3.select("#map")
@@ -49,38 +44,49 @@ const svg = d3.select("#map")
     .attr("preserveAspectRatio", "xMidYMid meet");
 
 const g = svg.append("g"); 
-
 const projection = d3.geoConicConformal()
-    .center([2.454071, 46.279229])
+    .center([2.454071, 46.279229]) // Centre de la France
     .scale(3500)
     .translate([width / 2, height / 2]);
 
 const path = d3.geoPath().projection(projection);
 
+// Suivi de l'état de la carte
 let currentLevel = "region"; 
 let activeRegion = null;
 let activeDepartment = null;
 let allDepartmentsGeojson = null;
 let allRegionsFeatures = null;
+let currentIndicator = "altitude"; 
 
+// Calques pour les régions, départements et communes
 const layerRegions = g.append("g").attr("id", "regions");
 const layerDepts = g.append("g").attr("id", "departments");
 const layerCommunes = g.append("g").attr("id", "communes");
 
+// Récupération des données sur les communes, départements ou régions pour la construction de la carte
 const URL_REGIONS = "https://raw.githubusercontent.com/gregoiredavid/france-geojson/master/regions.geojson";
 const URL_ALL_DEPTS = "https://raw.githubusercontent.com/gregoiredavid/france-geojson/master/departements.geojson";
 const getRegionDeptsMetaUrl = (regionCode) => `https://geo.api.gouv.fr/regions/${regionCode}/departements`;
 const getCommunesUrl = (deptCode) => `https://geo.api.gouv.fr/departements/${deptCode}/communes?format=geojson&geometry=contour`;
 
+// Configuration des échelles de couleurs personnalisées pour les indicateurs
 const customBlueInterpolator = t => d3.interpolateBlues(d3.scaleLinear().domain([0, 1]).range([0.2, 1])(t));
 const customPurpleInterpolator = t => d3.interpolatePurples(d3.scaleLinear().domain([0, 1]).range([0.2, 1])(t));
-
 const colorScale = d3.scaleSequential(customPurpleInterpolator);
-const tooltip = d3.select("#tooltip");
-// Variable pour suivre l'indicateur sélectionné par l'utilisateur
-let currentIndicator = "altitude"; 
 
-// --- CONSTRUCTION DE LA LÉGENDE (DÉGRADÉ CONTINU) ---
+// configuration du zoom pour la carte
+const zoom = d3.zoom()
+    .scaleExtent([1, 40])
+    .on("zoom", (event) => {
+        g.attr("transform", event.transform);
+    });
+
+svg.call(zoom);
+
+const tooltip = d3.select("#tooltip");
+
+// Construction de la légende
 const legendWidth = 250;
 const legendHeight = 45;
 const legendMargin = 15;
@@ -92,21 +98,18 @@ const legendSvg = d3.select("#legend")
     .append("svg")
     .attr("width", legendWidth)
     .attr("height", legendHeight);
-
 const defs = legendSvg.append("defs");
 const linearGradient = defs.append("linearGradient")
     .attr("id", "linear-gradient")
     .attr("x1", "0%").attr("y1", "0%")
     .attr("x2", "100%").attr("y2", "0%");
-
-// On utilise l'échelle de couleur actuelle (Viridis ou Blues)
 const colorStops = d3.range(0, 1.1, 0.1);
+
 linearGradient.selectAll("stop")
     .data(colorStops)
     .enter().append("stop")
     .attr("offset", d => `${d * 100}%`)
     .attr("stop-color", d => colorScale.interpolator()(d));
-
 legendSvg.append("rect")
     .attr("width", gradientWidth)
     .attr("height", 12)
@@ -114,28 +117,22 @@ legendSvg.append("rect")
     .attr("y", 0)
     .style("fill", "url(#linear-gradient)");
 
-// On prépare le groupe qui accueillera les chiffres
 const legendAxisGroup = legendSvg.append("g")
     .attr("id", "legend-axis-group")
     .attr("transform", `translate(${legendMargin}, 12)`);
-
-// --- OPTIONNEL : AJOUT DE L'INDICATEUR "SANS DONNÉES" ---
 const noDataGroup = legendSvg.append("g")
     .attr("transform", `translate(${legendMargin}, 35)`);
-
 noDataGroup.append("rect")
     .attr("width", 10).attr("height", 10)
     .attr("fill", "#000000");
-
 noDataGroup.append("text")
     .attr("x", 15).attr("y", 9)
     .style("font-size", "10px")
     .text("Pas de données");
 
 
-
+// Fonction pour initialiser le filtre de sélection des types de prairies
 function initPrairieFilter(types) {
-    // 1. Initialisation de la variable globale
     selectedPrairies = [...types];
     
     const container = d3.select("#prairie-checkboxes");
@@ -150,29 +147,23 @@ function initPrairieFilter(types) {
         container.classed("show", !isOpen);
     });
 
-    // 3. Génération propre des éléments
     const items = container.selectAll(".checkbox-item")
         .data(types)
         .enter()
         .append("label")
         .attr("class", "checkbox-item");
 
-    // On ajoute l'input séparément pour mieux contrôler l'événement
     items.append("input")
         .attr("type", "checkbox")
         .attr("value", d => d)
         .property("checked", true)
         .on("change", function() {
-            // Mettre à jour la liste
             selectedPrairies = [];
             container.selectAll("input").each(function() {
                 if (this.checked) selectedPrairies.push(this.value);
             });
 
-            // Mise à jour du texte du bouton
             updateButtonText(btn, types.length);
-
-            // Lancer le rafraîchissement
             refreshDataWithFilters();
         });
 
@@ -180,7 +171,7 @@ function initPrairieFilter(types) {
         .text(d => d);
 }
 
-// Petite fonction utilitaire pour la clarté
+// Fonction pour le texte du bouton de sélection des types de prairies
 function updateButtonText(btn, totalCount) {
     if (selectedPrairies.length === totalCount) {
         btn.html("Tous les types <span style='font-size:10px'>▼</span>");
@@ -191,41 +182,22 @@ function updateButtonText(btn, totalCount) {
     }
 }
 
-// --- CONFIGURATION DU ZOOM MANUEL ---
-const zoom = d3.zoom()
-    .scaleExtent([1, 40])
-    .on("zoom", (event) => {
-        g.attr("transform", event.transform);
-    });
-
-svg.call(zoom);
-
-
-// --- MISE À JOUR DU PANNEAU LATÉRAL DYNAMIQUE ---
+// Fonction pour mettre à jour les infos du panneau latéral
 function updateSidePanel(feature, level) {
-    console.log(feature)
-    if (!feature || !feature.properties) return;
+    if (!feature || !feature.properties) 
+        return;
 
     const props = feature.properties;
-    const stats = props.value; // Données renvoyées par DuckDB
+    const stats = props.value;
 
-    // Titre et Niveau
     document.getElementById("info-title").innerText = props.nom || props.name;
     document.getElementById("panel-level").innerText = level;
 
     if (stats) {
-        // 1. Chiffres clés
-        // Formater le BigInt en ajoutant les séparateurs de milliers
         document.getElementById("nb-parcelles").innerText = stats.nb_parcelles.toString().replace(/\B(?=(\d{3})+(?!\d))/g, " ");
         document.getElementById("alt-val").innerText = `${stats.altitude.toFixed(1)} m`;
         document.getElementById("pente-val").innerText = `${stats.pente.toFixed(1)} %`;
-
-
-
-        // 1. Calculer les données du Top 5 (retourne un tableau d'objets maintenant)
         const top5Data = calculateTop5Data(stats.parcelles_details);
-        
-        // 2. Appeler la fonction D3 pour dessiner/mettre à jour le graphique
         drawTop5Chart(top5Data, "#top-prairies-chart");
     } else {
         document.getElementById("nb-parcelles").innerText = "0";
@@ -236,53 +208,41 @@ function updateSidePanel(feature, level) {
 }
 
 
-// --- FONCTION DE DESSIN OPTIMISÉE ---
+// Fonction pour dessiner les zones sur la carte (régions, départements ou communes) avec les bonnes couleurs et interactions
 function drawFeatures(layer, features, className, clickHandler) {
     layer.selectAll("path")
         .data(features, d => d.properties.code || d.properties.nom)
         .join("path") 
         .attr("d", path)
         .attr("class", className)
-        // 1. PROTECTION DU REMPLISSAGE (FILL)
         .attr("fill", d => {
             const val = (d.properties && d.properties.value) ? d.properties.value[currentIndicator] : null;
-            return val !== null ? colorScale(val) : "#000000"; // Noir si null
+            return val !== null ? colorScale(val) : "#000000";
         })
         .on("click", clickHandler)
         .on("mouseover", function(event, d) {
-
-            // Reset all strokes at this level
             layer.selectAll("path")
                 .style("stroke", "#fff")
                 .style("stroke-width", "0.5px");
-
-            // Highlight hovered one
             d3.select(this)
                 .raise()
                 .style("stroke", "#000")
                 .style("stroke-width", "1px");
-
             tooltip.style("opacity", 1);
-
             const val = (d.properties && d.properties.value)
                 ? d.properties.value[currentIndicator]
                 : null;
-
             const label = currentIndicator === "altitude" ? "Altitude" : "Pente";
             const unite = currentIndicator === "altitude" ? "m" : "°";
-
             const displayVal = val !== null
                 ? `${val.toFixed(1)} ${unite}`
                 : "Donnée indisponible";
-
             tooltip.html(`<strong>${d.properties.nom}</strong><br>${label} : ${displayVal}`);
         })
         .on("mouseout", function() {
-
             d3.select(this)
                 .style("stroke", "#fff")
                 .style("stroke-width", "0.5px");
-
             tooltip.style("opacity", 0);
         })
         .on("mousemove", function(event) {
@@ -293,15 +253,14 @@ function drawFeatures(layer, features, className, clickHandler) {
 }
 
 
-// --- MISE À JOUR DES COULEURS ET DE LA LÉGENDE ---
+// Fonction pour mettre à jour les couleurs des zones affichées et la légende en fonction
+// l'indicateur sélectionné et de l'échelle
 function updateColorsAndLegend(features) {
-    // 1. On filtre les valeurs pour l'échelle
     const values = features
         .map(f => f.properties.value ? f.properties.value[currentIndicator] : null)
         .filter(v => v !== null && v !== undefined);
 
     if (values.length === 0) {
-        // On ne cible que les éléments de la carte, pas la légende !
         d3.selectAll(".region, .department, .commune").transition().attr("fill", "#000000");
         return;
     }
@@ -309,38 +268,19 @@ function updateColorsAndLegend(features) {
     const minMax = [d3.min(values), d3.max(values)];
     colorScale.domain(minMax);
 
-    // 2. Mise à jour ciblée des couleurs
-    // On utilise les classes CSS que tu as définies dans drawFeatures
     d3.selectAll(".region, .department, .commune")
         .transition()
         .duration(500)
         .attr("fill", function(d) {
-            // SÉCURITÉ : On vérifie si d et d.properties existent
             if (!d || !d.properties) return "#000000";
             
             const val = d.properties.value ? d.properties.value[currentIndicator] : null;
             return val !== null ? colorScale(val) : "#000000";
         });
-
-    // 3. Mise à jour de la légende (chiffres sous le dégradé)
     updateLegendUI(minMax[0], minMax[1]);
 }
 
-
-function renderLegendAxis() {
-    const axisContainer = d3.select("#legend-axis");
-    
-    // On crée l'axe avec D3
-    const axis = d3.axisBottom(legendScale)
-        .ticks(5)
-        .tickFormat(d => `${d.toFixed(1)}${currentIndicator === "altitude" ? 'm' : '°'}`);
-
-    // On l'injecte dans le conteneur (en effaçant l'ancien)
-    axisContainer.selectAll("*").remove();
-    axisContainer.transition().duration(500).call(axis);
-}
-
-
+// Foncion pour mettre à jour les graduations de la légende
 function updateLegendUI(min, max) {
     const legendScale = d3.scaleLinear()
         .domain([min, max])
@@ -353,12 +293,9 @@ function updateLegendUI(min, max) {
             return `${Math.round(d)}${unit}`;
         });
 
-    // On met à jour l'axe avec une transition fluide
     d3.select("#legend-axis-group")
-        .transition().duration(500)
         .call(legendAxis);
         
-    // On met aussi à jour les couleurs du dégradé si l'interpolateur a changé
     d3.selectAll("#linear-gradient stop")
         .attr("stop-color", (d, i, nodes) => {
             const offset = i / (nodes.length - 1);
@@ -367,32 +304,31 @@ function updateLegendUI(min, max) {
 }
 
 
-// --- GESTION DU ZOOM  ---
+// Fonction de zoom sur une zone sélectionnée
 function zoomToFeature(feature, maxZoom = 20) {
-    if (!feature) return resetZoom();
+    if (!feature) 
+        return resetZoom();
 
-    const bounds = path.bounds(feature);
+    // Récupére des coordonnées de la zone et calcul du centre et du facteur de zoom
+    const bounds = path.bounds(feature); 
     const dx = bounds[1][0] - bounds[0][0];
     const dy = bounds[1][1] - bounds[0][1];
     const x = (bounds[0][0] + bounds[1][0]) / 2;
     const y = (bounds[0][1] + bounds[1][1]) / 2;
-    
-    // On utilise maxZoom pour empêcher d'être "trop près" des petites zones
     const scale = Math.max(1, Math.min(maxZoom, 0.8 / Math.max(dx / width, dy / height)));
     const transform = d3.zoomIdentity.translate(width / 2 - scale * x, height / 2 - scale * y).scale(scale);
 
     svg.transition().duration(750).call(zoom.transform, transform);
 }
 
+// Fonction pour réinitialiser le zoom à l'état initial (vue d'ensemble de la France)
 function resetZoom() {
     svg.transition().duration(750).call(zoom.transform, d3.zoomIdentity);
 }
 
 
-// --- GESTION DES CLICS ---
-// --- Clic sur une région ---
+// Fonction de gestion du clic sur une région : Affiche les départements de la région avec les données agrégées
 async function handleRegionClick(event, d) {
-    // SÉCURITÉ : Si le chargement initial n'est pas fini, on ne fait rien
     if (!allDepartmentsGeojson || !allDepartmentsGeojson.features) {
         console.warn("Les données géographiques des départements ne sont pas encore prêtes.");
         return;
@@ -401,22 +337,16 @@ async function handleRegionClick(event, d) {
     const regCode = String(d.properties.code);
     activeRegion = d;
 
-    // 1. Nettoyage immédiat de l'interface
+    // On retire les éléments inférieurs
     layerDepts.selectAll("path").remove();
     layerCommunes.selectAll("path").remove();
     g.select("#altitude-symbols").remove(); 
 
-    // 2. Chargement groupé (Géo-métadonnées + Stats DuckDB)
-    // On récupère la liste des départements de la région ET les stats réelles
     const [deptsMeta, deptsStats] = await Promise.all([
         d3.json(getRegionDeptsMetaUrl(regCode)),
         DataManager.getAggregatedData('dep_parc', selectedPrairies)
     ]);
-
-    // Sécurité : vérifier si l'utilisateur n'a pas cliqué ailleurs entre temps
-    if (activeRegion && String(activeRegion.properties.code) !== regCode) return;
     
-    // 3. Filtrage et Jointure
     const validDeptCodes = deptsMeta.map(dept => String(dept.code));
     const regionDeptsFeatures = allDepartmentsGeojson.features.filter(f => 
         validDeptCodes.includes(String(f.properties.code))
@@ -424,11 +354,10 @@ async function handleRegionClick(event, d) {
 
     regionDeptsFeatures.forEach(f => {
         const stats = deptsStats.get(String(f.properties.code));
-        // JOINTURE RÉELLE : On utilise les stats DuckDB
         f.properties.value = stats || null;
     });
 
-    // 4. Mise à jour de l'état et de l'UI
+
     currentLevel = "department";
     layerRegions.style("opacity", 0.2); 
     layerDepts.style("opacity", 1);
@@ -436,98 +365,72 @@ async function handleRegionClick(event, d) {
     document.getElementById("btn-back").style.display = "block";
     document.getElementById("btn-back").innerText = "⬅ Retour aux Régions";
 
-    // 5. Dessin et Zoom
     drawFeatures(layerDepts, regionDeptsFeatures, "department", handleDeptClick);
     
     updateSidePanel(d, "Région");
     updateColorsAndLegend(regionDeptsFeatures);
     zoomToFeature(d);
 
-    // On retourne les features pour que le pilote auto (search) puisse continuer si besoin
     return regionDeptsFeatures;
 }
 
-// --- Clic sur un département ---
+// Fonction de gestion du clic sur un département : Affiche les communes du département
 async function handleDeptClick(event, d) {
-    if (event && event.stopPropagation) event.stopPropagation(); // Sécurité pour les clics
+    if (event && event.stopPropagation) 
+        event.stopPropagation();
     
     const deptCode = String(d.properties.code);
     activeDepartment = d;
 
-    // 1. Nettoyage de l'interface
+    // Nettoyage de l'interface
     layerCommunes.selectAll("path").remove();
     g.select("#altitude-symbols").remove(); 
 
-    // 2. Chargement en parallèle (GéoJSON des communes + Stats DuckDB)
-    // On réutilise la variable geojsonData chargée ici pour éviter un second fetch
     const [geojsonData, statsMap] = await Promise.all([
         d3.json(getCommunesUrl(deptCode)),
         DataManager.getCommunesData(deptCode, selectedPrairies)
     ]);
     console.log("StatsMap générée :", statsMap)
 
-    // Sécurité : si l'utilisateur a cliqué ailleurs pendant le chargement
-    if (activeDepartment && String(activeDepartment.properties.code) !== deptCode) return;
-
-    // 3. Jointure réelle
     geojsonData.features.forEach(f => {
         const codeInsee = String(f.properties.code);
-        // On récupère les stats via le code INSEE (ex: "01001")
         f.properties.value = statsMap.get(codeInsee) || null;
     });
 
-    // 4. Mise à jour de l'état et de l'UI
     currentLevel = "commune";
     layerDepts.style("opacity", 0.2); 
     layerCommunes.style("opacity", 1);
     
     document.getElementById("btn-back").innerText = "⬅ Retour aux Départements";
 
-    // 5. Dessin et Zoom
     drawFeatures(layerCommunes, geojsonData.features, "commune", handleCommuneClick);
 
-    // Calcul du max pour la légende et mise à jour du panel
     updateSidePanel(d, "Département");
     updateColorsAndLegend(geojsonData.features);
     zoomToFeature(d);
 
-    // /!\ TRÈS IMPORTANT : On retourne les données pour que le pilote auto 
-    // puisse savoir que le dessin est terminé
     return geojsonData.features;
 }
 
-
-// --- Clic sur une commune ---
+// Fonction de gestion du clic sur une commune : Affiche les détails de la commune dans le panneau latéral et met en évidence la commune sélectionnée
 function handleCommuneClick(event, d) {
-    // 1. Sécurité : On n'appelle stopPropagation que si l'événement existe
     if (event && typeof event.stopPropagation === 'function') {
         event.stopPropagation();
     }
-
-    // 2. Mise à jour des données (le "d" est fourni par le pilote auto)
-    const stats = d.properties.value || null;
     
-    // 3. Mise à jour du panneau latéral
     updateSidePanel(d, "Commune");
+    zoomToFeature(d, 25);
 
-    // on zoom sur la commune sélectionnée
-    zoomToFeature(d, 25); // Zoom plus serré pour les communes
-
-    // 4. Style visuel : On réinitialise toutes les communes
     layerCommunes.selectAll("path")
         .style("stroke", "#fff")
         .style("stroke-width", "0.5px");
 
-    // 5. Mise en évidence de la commune sélectionnée
-    // Si c'est un clic manuel, on utilise event.currentTarget
-    // Si c'est le pilote auto, on cherche le path par son code
     if (event && event.currentTarget) {
         d3.select(event.currentTarget)
             .raise()
             .style("stroke", "#f1c40f")
             .style("stroke-width", "2.5px");
     } else {
-        // Mode Pilote Auto : on cherche l'élément dans le DOM via D3
         layerCommunes.selectAll("path")
             .filter(pathData => pathData === d)
             .raise()
@@ -537,12 +440,11 @@ function handleCommuneClick(event, d) {
 }
 
 
-// --- GESTION DU BOUTON RETOUR ---
+// Bouton retour pour remonter dans la hiérarchie (commune -> département -> région) 
 d3.select("#btn-back").on("click", async function() {
     if (currentLevel === "commune") {
         currentLevel = "department";
         
-        // 1. Zoom vers le département
         if (activeRegion) {
             zoomToFeature(activeRegion, 10);
             console.log("Zoom sur le département actif avec niveau 10");
@@ -552,15 +454,12 @@ d3.select("#btn-back").on("click", async function() {
             console.log("Aucun département actif, reset du zoom");
         }
 
-        // 2. NETTOYAGE : On supprime les communes du DOM
-        // On utilise une transition pour la fluidité, puis on remove()
         layerCommunes.selectAll("path")
-            .transition().duration(300)
             .style("opacity", 0)
-            .remove(); // Supprime les éléments du DOM après la transition
+            .remove();
 
-        // 3. Réafficher les départements
-        layerDepts.transition().duration(300).style("opacity", 1);
+
+        layerDepts.style("opacity", 1);
         
         document.getElementById("btn-back").innerText = "⬅ Retour aux Régions";
         refreshDataWithFilters();
@@ -576,14 +475,12 @@ d3.select("#btn-back").on("click", async function() {
             resetZoom();
         }
 
-        // 2. NETTOYAGE : On supprime les départements du DOM
         layerDepts.selectAll("path")
-            .transition().duration(300)
             .style("opacity", 0)
             .remove();
 
         // 3. Réafficher les régions
-        layerRegions.transition().duration(300).style("opacity", 1);
+        layerRegions.style("opacity", 1);
         
         activeDepartment = null;
         d3.select(this).style("display", "none");
@@ -592,11 +489,10 @@ d3.select("#btn-back").on("click", async function() {
 });
 
 
-// --- GESTION DU FILTRE INDICATEUR ---
+// Filtre des indicateurs (pente ou altitude)
 d3.select("#indicator-select").on("change", function() {
-    currentIndicator = this.value; // "altitude" ou "pente"
+    currentIndicator = this.value;
     colorScale.interpolator(currentIndicator === "altitude" ? customPurpleInterpolator : customBlueInterpolator);
-    // On détermine quelles données sont actuellement affichées à l'écran
     let activeFeatures = [];
     if (currentLevel === "commune") {
         activeFeatures = layerCommunes.selectAll("path").data();
@@ -606,13 +502,12 @@ d3.select("#indicator-select").on("change", function() {
         activeFeatures = layerRegions.selectAll("path").data();
     }
     
-    // On repeint la carte et on recadre la légende avec la nouvelle donnée
     updateColorsAndLegend(activeFeatures);
 });
 
 
-// --- MOTEUR DE RECHERCHE ET PILOTE AUTOMATIQUE ---
 
+// Moteur de recherche pour trouver une commune, un département ou une région et y zoomer
 const searchInput = d3.select("#search-bar");
 const searchResults = d3.select("#search-results");
 
@@ -624,7 +519,7 @@ searchInput.on("input", function() {
         return;
     }
 
-    // 1. Recherche locale : Régions et Départements
+    // Recherche de correspondances dans les données déjà chargées (régions et départements)
     const matchedRegions = allRegionsFeatures
         .filter(r => r.properties.nom.toLowerCase().includes(query))
         .map(r => ({ type: 'region', nom: r.properties.nom, code: r.properties.code }));
@@ -633,20 +528,18 @@ searchInput.on("input", function() {
         .filter(d => d.properties.nom.toLowerCase().includes(query))
         .map(d => ({ type: 'department', nom: d.properties.nom, code: d.properties.code, regionCode: d.properties.codeRegion }));
 
-    // 2. Recherche distante (API) : Communes (on utilise l'API pour ne pas saturer la RAM)
+    // Recherche via l'API pour les communes
     d3.json(`https://geo.api.gouv.fr/communes?nom=${query}&fields=nom,code,codeDepartement,codeRegion&limit=5`).then(communes => {
         const matchedCommunes = communes.map(c => ({
             type: 'commune', nom: c.nom, code: c.code, deptCode: c.codeDepartement, regionCode: c.codeRegion
         }));
 
-        // On fusionne les résultats (max 8 éléments affichés)
         const allResults = [...matchedRegions, ...matchedDepts, ...matchedCommunes].slice(0, 8);
 
         if (allResults.length > 0) {
             searchResults.style("display", "block").html("");
             
             allResults.forEach(res => {
-                // Définition des couleurs et labels par type
                 const typeLabel = res.type === 'region' ? 'Région' : res.type === 'department' ? 'Département' : 'Commune';
                 const color = res.type === 'region' ? '#28a745' : res.type === 'department' ? '#17a2b8' : '#6f42c1';
                 
@@ -656,9 +549,8 @@ searchInput.on("input", function() {
                     .on("click", () => {
                         searchInput.property("value", res.nom);
                         searchResults.style("display", "none");
-                        
-                        // Lancement du pilote automatique !
-                        jumpToLocation(res.type, res.code, res.deptCode, res.regionCode);
+
+                        jumpToLocation(res.type, res.code);
                     });
             });
         } else {
@@ -666,14 +558,12 @@ searchInput.on("input", function() {
         }
     });
 });
-
-// Fermer les résultats si on clique ailleurs
 d3.select("body").on("click", (event) => {
     if (event.target.id !== "search-bar") searchResults.style("display", "none");
 });
 
 
-
+// Fonction pour mettre à jour les données selon les filtres
 async function refreshDataWithFilters() {
     let statsMap;
     const currentFeatures = d3.selectAll(`.${currentLevel}`).data();
@@ -688,19 +578,17 @@ async function refreshDataWithFilters() {
         statsMap = await DataManager.getCommunesData(deptCode, selectedPrairies);
     }
 
-    // On ré-injecte les stats filtrées dans les features
     currentFeatures.forEach(f => {
         const code = String(f.properties.code);
-        f.properties.value = statsMap.get(code) || null; // Noir si plus de données avec ce filtre
+        f.properties.value = statsMap.get(code) || null;
     });
 
     updateColorsAndLegend(currentFeatures);
 }
 
-// --- LE PILOTE AUTOMATIQUE (Navigation asynchrone) ---
-async function jumpToLocation(type, code, name) {
+// Affichage des détails en fonction du résultat de la recherche 
+async function jumpToLocation(type, code) {
     const cleanCode = String(code);
-    console.log(`🚀 Saut vers : ${name} (${type})`);
 
     try {
         if (type === 'region') {
@@ -709,10 +597,8 @@ async function jumpToLocation(type, code, name) {
         } 
         
         else if (type === 'department') {
-            // 1. Trouver le département dans le GeoJSON global
             const deptFeature = allDepartmentsGeojson.features.find(f => String(f.properties.code) === cleanCode);
             
-            // 2. Trouver à quelle région il appartient en cherchant dans les métadonnées de chaque région
             let parentRegion = null;
             for (let reg of allRegionsFeatures) {
                 const deptsMeta = await d3.json(getRegionDeptsMetaUrl(reg.properties.code));
@@ -724,15 +610,11 @@ async function jumpToLocation(type, code, name) {
 
             if (parentRegion && deptFeature) {
                 await handleRegionClick(null, parentRegion);
-                // On attend que la couche département soit prête
                 setTimeout(() => handleDeptClick(null, deptFeature), 500);
             }
         } 
         
         else if (type === 'commune') {
-            const deptCode = cleanCode.startsWith('97') ? cleanCode.substring(0, 3) : cleanCode.substring(0, 2);
-            
-            // Retrouver le département et sa région via l'API
             let parentRegion = null;
             for (let reg of allRegionsFeatures) {
                 const deptsMeta = await d3.json(getRegionDeptsMetaUrl(reg.properties.code));
@@ -748,42 +630,32 @@ async function jumpToLocation(type, code, name) {
                 await handleRegionClick(null, parentRegion);
                 
                 setTimeout(async () => {
-                    // handleDeptClick charge les communes et renvoie les features
                     const communesFeatures = await handleDeptClick(null, deptFeature);
-                    
-                    // On cherche Lyon dans les features chargées
                     const commune = communesFeatures.find(f => String(f.properties.code) === cleanCode);
                     
                     if (commune) {
-                        // On attend un court instant que D3 ait fini de générer les balises <path>
                         setTimeout(() => {
-                            // 1. Zoomer sur la commune
                             zoomToFeature(commune);
-                            
-                            // 2. Afficher les infos dans le panel
                             handleCommuneClick(null, commune);
-                            
-                            // 3. La mettre en évidence visuellement sur la carte
                             layerCommunes.selectAll("path")
                                 .filter(d => String(d.properties.code) === cleanCode)
                                 .raise()
                                 .style("stroke", "#f1c40f")
                                 .style("stroke-width", "3px")
                                 .style("fill-opacity", 1);
-                        }, 600); // Temps suffisant pour que le dessin et le zoom s'amorcent
+                        }, 600);
                     }
                 }, 500);
             }
         }
     } catch (err) {
-        console.error("Erreur lors du saut via API :", err);
+        console.error("Erreur lors du saut :", err);
     }
-
     d3.select("#search-bar").property("value", "");
     d3.select("#search-results").style("display", "none");
 }
 
-
+// Fonction pour dessiner le graphique des 5 types de prairies les plus présents
 function drawTop5Chart(data, containerSelector) {
     const container = d3.select(containerSelector);
     const margin = { top: 5, right: 5, bottom: 5, left: 5 };
@@ -818,7 +690,6 @@ function drawTop5Chart(data, containerSelector) {
         .append("g")
         .attr("class", "bar-group")
         .on("mousemove", function(event, d) {
-            // TOOLTIP AVANCÉ ICI
             tooltip.style("opacity", 1)
                    .html(`
                     <div style="font-weight:bold; margin-bottom:5px; border-bottom:1px solid #555;">${d.culture}</div>
@@ -864,21 +735,19 @@ function calculateTop5Data(detailsString) {
     if (!detailsString) return [];
 
     const counts = {};
-    // On découpe chaque culture
     detailsString.split(',').forEach(item => {
         const parts = item.trim().split(':');
-        // On attend maintenant 4 parties : Nom, Surface, Altitude, Pente
         if (parts.length >= 2) {
             const type = parts[0].trim();
             const surf = parseFloat(parts[1]) || 0;
-            const alt = parseFloat(parts[2]) || 0;  // Nouvelle donnée
-            const pente = parseFloat(parts[3]) || 0; // Nouvelle donnée
+            const alt = parseFloat(parts[2]) || 0;  
+            const pente = parseFloat(parts[3]) || 0; 
             
             if (!isNaN(surf)) {
                 counts[type] = {
                     surface: (counts[type]?.surface || 0) + surf,
-                    alt: alt,   // Note: ici on prend la valeur brute, 
-                    pente: pente // idéalement ton SQL doit déjà envoyer la moyenne
+                    alt: alt,
+                    pente: pente
                 };
             }
         }
@@ -937,7 +806,7 @@ async function renderScatter(customFeatures = null, fromBack = false) {
     const innerWidth = width - margin.left - margin.right;
     const innerHeight = height - margin.top - margin.bottom;
 
-    // 🔹 Determine which features to use
+    // Determine which features to use
     let features = customFeatures;
 
     if (!features) {
@@ -1013,7 +882,7 @@ async function renderScatter(customFeatures = null, fromBack = false) {
             tooltip.style("opacity", 0);
         })
 
-        // 🚀 Drill-down click
+        // Drill-down click
         .on("click", async function(event, d) {
 
             d3.selectAll("#scatter-svg circle")
@@ -1023,7 +892,7 @@ async function renderScatter(customFeatures = null, fromBack = false) {
                 .attr("stroke", "black")
                 .attr("stroke-width", 2);
 
-            // 🔹 REGION → Departments
+            // REGION -> Departments
             if (currentLevel === "region") {
 
                 scatterHistory.push({
@@ -1055,7 +924,7 @@ async function renderScatter(customFeatures = null, fromBack = false) {
                 renderScatter(regionDepts);
             }
 
-            // 🔹 DEPARTMENT → Communes
+            // DEPARTMENT → Communes
             else if (currentLevel === "department") {
 
                 scatterHistory.push({
@@ -1082,7 +951,7 @@ async function renderScatter(customFeatures = null, fromBack = false) {
                 renderScatter(geojsonData.features);
             }
 
-            // 🔹 COMMUNE → Parcelles
+            // COMMUNE → Parcelles
             else if (currentLevel === "commune") {
 
                 scatterHistory.push({
@@ -1092,14 +961,10 @@ async function renderScatter(customFeatures = null, fromBack = false) {
 
                 const communeCode = String(d.feature.properties.code);
 
-                // 👇 Adjust this to your real data loader
                 const parcellesData = await DataManager.getParcellesData(
                     communeCode,
                     selectedPrairies
                 );
-
-                // Expecting an array of objects like:
-                // { id, altitude, pente, geometry, ... }
 
                 const parcellesFeatures = parcellesData
                     .filter(p => p.altitude && p.pente)

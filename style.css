@@ -1,0 +1,302 @@
+* { 
+    box-sizing: border-box; 
+}
+
+:root {
+    --color-primary: #007bff;
+    --color-border: #ced4da;
+    --color-bg-light: #f1f3f5;
+    --color-bg-lighter: #f8f9fa;
+    --color-text: #495057;
+    --color-text-dark: #212529;
+    --color-shadow: rgba(0, 0, 0, 0.05);
+    --color-input-bg: #f1f3f5;
+}
+
+body, html {
+    margin: 0; padding: 0;
+    width: 100%; height: 100%;
+    font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    background-color: var(--color-bg-lighter);
+    overflow: hidden;
+}
+#app-container {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+}
+
+/* Filtres */
+#filters-panel {
+    background-color: #ffffff;
+    padding: 15px 25px;
+    box-shadow: 0 2px 10px var(--color-shadow);
+    z-index: 10;
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    border-bottom: 1px solid #e9ecef;
+}
+#filters-panel h1 {
+    margin: 0; 
+    font-size: 18px; 
+    color: #333; 
+    margin-right: auto;
+}
+
+.filter-mockup, #indicator-select, #dropdown-btn {
+    height: 38px;
+    padding: 0 12px;
+    font-size: 14px;
+    border: 1px solid var(--color-border);
+    border-radius: 4px;
+    background-color: var(--color-bg-light);
+    color: var(--color-text);
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+/* Zone principale (Carte + Info) */
+#main-content {
+    display: flex;
+    flex: 1; /* Prend le reste de la hauteur */
+    overflow: hidden;
+}
+#map-container {
+    flex: 1; /* Prend tout l'espace disponible à gauche */
+    position: relative;
+    background-color: #eef2f5; /* Couleur de fond (océan/vide) */
+}
+svg {
+    width: 100%;
+    height: 100%;
+    display: block;
+}
+
+/* Panneau d'informations à droite */
+#info-panel {
+    width: 350px;
+    background-color: #ffffff;
+    box-shadow: -2px 0 10px var(--color-shadow);
+    padding: 25px;
+    z-index: 1;
+    overflow-y: auto;
+    border-left: 1px solid #e9ecef;
+    display: flex;
+    flex-direction: column;
+}
+#info-title {
+    margin-top: 0;
+    color: var(--color-text-dark);
+    font-size: 22px;
+    border-bottom: 2px solid var(--color-primary);
+    padding-bottom: 10px;
+}
+.data-row {
+    display: flex; justify-content: space-between; margin-bottom: 10px; font-size: 15px;
+}
+
+/* graphiques */
+.chart-placeholder {
+    margin-top: 30px; background: #f8f9fa; border: 1px dashed #adb5bd; border-radius: 6px;
+    height: 200px; display: flex; align-items: flex-end; justify-content: space-around; padding: 10px;
+}
+.bar-mockup { 
+    width: 25%; 
+    background-color: #007bff; 
+    border-radius: 3px 3px 0 0; 
+}
+
+/* Carte (Bouton, Légende, Tooltip) */
+.region, .department, .commune, .altitude-pick {
+    stroke: #fff;
+    stroke-width: 0.5px;
+    vector-effect: non-scaling-stroke;
+    cursor: pointer;
+    transition: opacity 0.3s;
+}
+.region:hover, .department:hover, .commune:hover {
+    opacity: 0.8;
+    stroke: #333;
+    stroke-width: 1.5px;
+    vector-effect: non-scaling-stroke;
+}
+
+#nav-controls { 
+    position: absolute; 
+    top: 20px; 
+    left: 20px; 
+    z-index: 10; }
+#btn-back { 
+    padding: 10px 15px; 
+    font-size: 14px; 
+    cursor: pointer; 
+    background-color: #343a40; 
+    color: white; 
+    border: none; 
+    border-radius: 4px; 
+    display: none; 
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2); 
+    transition: background 0.2s; 
+}
+#btn-back:hover { background-color: #23272b; }
+
+#legend, #tooltip {
+    position: absolute;
+    border-radius: 4px;
+    pointer-events: none;
+    z-index: 10;
+}
+
+#legend {
+    bottom: 30px;
+    left: 30px;
+    background: rgba(255, 255, 255, 0.95);
+    padding: 15px 15px 5px 15px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+}
+
+#tooltip {
+    background-color: rgba(33, 37, 41, 0.9);
+    color: #fff;
+    padding: 8px 12px;
+    font-size: 13px;
+    opacity: 0;
+    transition: opacity 0.2s;
+    z-index: 100;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+}
+
+/* Moteur de recherche */
+#search-bar {
+    padding: 8px 12px;
+    border: 1px solid var(--color-border);
+    border-radius: 4px;
+    width: 300px;
+    font-size: 14px;
+    outline: none;
+    transition: border-color 0.2s;
+}
+#search-bar:focus {
+    border-color: var(--color-primary);
+}
+#search-container {
+    position: relative;
+    margin-left: auto;
+    overflow: visible !important;
+}
+#search-results {
+    position: absolute;
+    top: calc(100% + 5px);
+    left: 0;
+    width: 100%;
+    min-width: 250px;
+    background: white;
+    border: 1px solid var(--color-border);
+    border-radius: 4px;
+    box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+    z-index: 9999;
+    max-height: 300px;
+    overflow-y: auto;
+}
+.search-item {
+    padding: 10px;
+    cursor: pointer;
+    border-bottom: 1px solid var(--color-bg-light);
+    font-size: 13px;
+    color: #333;
+}
+.search-item:hover {
+    background-color: var(--color-bg-lighter);
+}
+.search-badge { 
+    font-size: 10px; 
+    color: white; 
+    padding: 3px 6px; 
+    border-radius: 3px; 
+    margin-right: 8px; 
+    font-weight: bold;
+}
+.dropdown {
+    position: relative;
+    display: inline-block;
+}
+.dropdown-content {
+    display: none;
+    position: absolute;
+    background-color: white;
+    min-width: 200px;
+    width: 100%;
+    box-shadow: 0px 8px 16px rgba(0,0,0,0.2);
+    padding: 10px;
+    z-index: 3000;
+    border-radius: 4px;
+    border: 1px solid var(--color-border);
+}
+#dropdown-btn {
+    width: 200px;
+    text-align: left;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    padding-right: 10px;
+}
+
+.dropdown-content.show {
+    display: block;
+}
+
+.checkbox-item {
+    display: flex;
+    align-items: center;
+    padding: 5px 0;
+    font-size: 14px;
+    cursor: pointer;
+}
+
+.checkbox-item input {
+    margin-right: 10px;
+}
+
+.checkbox-item:hover {
+    background-color: var(--color-bg-lighter);
+}
+
+#indicator-select {
+    width: 200px;
+}
+
+#dropdown-btn {
+    width: 200px;
+    appearance: none;
+}
+
+path.feature {
+    stroke: rgba(255, 255, 255, 0.3);
+    stroke-width: 0.5px;
+    transition: fill 0.3s ease;
+}
+
+.modern-chart-container {
+    width: 100%;
+    height: 200px;
+    margin-top: 10px;
+    position: relative;
+}
+
+.chart-tooltip {
+    position: absolute;
+    padding: 10px;
+    background: rgba(30, 41, 59, 0.95);
+    color: #f8fafc;
+    border-radius: 6px;
+    pointer-events: none;
+    opacity: 0;
+    z-index: 9999;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+    min-width: 140px;
+    transition: opacity 0.2s;
+}

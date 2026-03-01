@@ -1,7 +1,8 @@
-// dataManager.js
 import * as duckdb from 'https://cdn.jsdelivr.net/npm/@duckdb/duckdb-wasm@1.28.0/+esm';
 let db, conn;
 
+// Initialisation de DuckDB et chargement du fichier parquet fusionné
+// Car pour github on a dû découper le fichier en 4 morceaux (data.parquet.aa, ab, ac, ad) pour respecter la limite de 100Mo par fichier
 export async function initData() {
     console.log("Démarrage du moteur DuckDB...");
     
@@ -14,51 +15,38 @@ export async function initData() {
     const worker = new Worker(worker_url);
     const logger = new duckdb.ConsoleLogger();
     
-    // CORRECTION : On ne met pas "const" ici, on utilise les variables du dessus
     db = new duckdb.AsyncDuckDB(logger, worker); 
     await db.instantiate(bundle.mainModule, bundle.pthreadWorker);
     URL.revokeObjectURL(worker_url);
 
     conn = await db.connect(); 
 
-    console.log("Chargement et fusion des chunks Parquet...");
+    console.log("Chargement et fusion des fichiers parquet");
     const arrayBuffer = await fetchAndMerge();
     
-    // On enregistre le buffer sous le nom 'data.parquet'
     await db.registerFileBuffer('data.parquet', new Uint8Array(arrayBuffer));
 
-    console.log("🚀 DuckDB prêt avec data.parquet fusionné !");
+    console.log("DuckDB prêt avec data.parquet fusionné");
 }
 
-
+// Fonction pour récupérer les 4 morceaux du fichier parquet, les fusionner
 async function fetchAndMerge() {
     const chunks = ['data.parquet.aa', 'data.parquet.ab', 'data.parquet.ac', 'data.parquet.ad'];
-    
-    // 1. Fetch all chunks in parallel
     const promises = chunks.map(url => fetch(url).then(res => res.arrayBuffer()));
     const buffers = await Promise.all(promises);
-
-    // 2. Calculate total size
     const totalLength = buffers.reduce((acc, buf) => acc + buf.byteLength, 0);
     const combinedArray = new Uint8Array(totalLength);
 
-    // 3. Manually copy each buffer into the giant array
     let offset = 0;
     for (const buf of buffers) {
         combinedArray.set(new Uint8Array(buf), offset);
         offset += buf.byteLength;
     }
 
-    // Now 'combinedArray' has the magic bytes at the end and can be read
     return combinedArray;
 }
 
-/**
- * Récupère les données agrégées pour les régions ou départements
- * @param {string} levelColumn 'reg_parc' ou 'dep_parc'
- */
-
-
+// Fonction pour récupérer les données agrégées par zone (département ou région) en fonction des types de prairies sélectionnés
 export async function getAggregatedData(levelColumn, filterTypes = []) {
     if (!Array.isArray(filterTypes) || filterTypes.length === 0) return new Map();
 
@@ -66,9 +54,6 @@ export async function getAggregatedData(levelColumn, filterTypes = []) {
         const typesList = filterTypes
             .map(t => `'${String(t).replace(/'/g, "''")}'`)
             .join(',');
-
-        // 1. On calcule les stats par (Zone + Culture)
-        // 2. On agrège ensuite par Zone
         const query = `
             WITH stats_par_culture AS (
                 SELECT 
@@ -93,8 +78,8 @@ export async function getAggregatedData(levelColumn, filterTypes = []) {
                 string_agg(libelle_group || ':' || s_type || ':' || a_type || ':' || p_type, ', ') as parcelles_details
             FROM stats_par_culture
             GROUP BY area_code`;
-        
         const result = await conn.query(query);
+
         return new Map(result.toArray().map(r => [r.code, r]));
     } catch (err) {
         console.error("Erreur SQL getAggregatedData :", err);
@@ -102,10 +87,11 @@ export async function getAggregatedData(levelColumn, filterTypes = []) {
     }
 }
 
+// Fonction pour récupérer les données des parcelles d'une commune en fonction des types de prairies sélectionnés
 export async function getCommunesData(deptCode, filterTypes = []) {
-    if (!Array.isArray(filterTypes) || filterTypes.length === 0) return new Map();
+    if (!Array.isArray(filterTypes) || filterTypes.length === 0) 
+        return new Map();
 
-    // Ici on filtre sur le département et on groupe par code commune (com_parc)
     const typesList = filterTypes
         .map(t => `'${String(t).replace(/'/g, "''")}'`)
         .join(',');
@@ -134,7 +120,6 @@ export async function getCommunesData(deptCode, filterTypes = []) {
         GROUP BY area_code`;
     
     const result = await conn.query(query);
-    // On s'assure que le code est une chaîne (ex: "01001") pour matcher le GeoJSON
     return new Map(result.toArray().map(r => [String(r.code).padStart(5, '0'), r]));
 }
 
@@ -181,9 +166,7 @@ export async function getParcellesData(communeCode, filterTypes = []) {
     }));
 }
 
-/**
- * Récupère la liste des types de prairies (groupes de culture)
- */
+// Fonction pour récupérer la liste des types de prairies uniques présentes dans le dataset (pour les filtres)
 export async function getUniquePrairieTypes() {
     const result = await conn.query(`SELECT DISTINCT libelle_group FROM 'data.parquet' WHERE libelle_group IS NOT NULL`);
     return result.toArray().map(r => r.libelle_group);
