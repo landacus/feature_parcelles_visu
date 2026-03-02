@@ -783,12 +783,14 @@ document.getElementById("btn-scatter").addEventListener("click", () => {
 function showScatterView() {
     mapContainer.style.display = "none";
     scatterContainer.style.display = "block";
+    document.getElementById("btn-scatter").innerText = "Carte";
     renderScatter();
 }
 
 function showMapView() {
     scatterContainer.style.display = "none";
     mapContainer.style.display = "block";
+    document.getElementById("btn-scatter").innerText = "Scatter plot";
 }
 
 async function renderScatter(customFeatures = null, fromBack = false) {   
@@ -898,7 +900,9 @@ async function renderScatter(customFeatures = null, fromBack = false) {
 
                 scatterHistory.push({
                     level: "region",
-                    features: features
+                    features: features,
+                    selectedFeature: d.feature,
+                    panelLevel: "Région"
                 });
 
                 const regCode = String(d.feature.properties.code);
@@ -930,7 +934,9 @@ async function renderScatter(customFeatures = null, fromBack = false) {
 
                 scatterHistory.push({
                     level: "department",
-                    features: features
+                    features: features,
+                    selectedFeature: d.feature,
+                    panelLevel: "Département"
                 });
 
                 const deptCode = String(d.feature.properties.code);
@@ -957,7 +963,9 @@ async function renderScatter(customFeatures = null, fromBack = false) {
 
                 scatterHistory.push({
                     level: "commune",
-                    features: features
+                    features: features,
+                    selectedFeature: d.feature,
+                    panelLevel: "Commune"
                 });
 
                 const communeCode = String(d.feature.properties.code);
@@ -1015,7 +1023,11 @@ function goBackScatter() {
     currentLevel = previous.level;
 
     renderScatter(previous.features, true);
-
+    
+    if (previous.selectedFeature && previous.panelLevel) {
+        updateSidePanel(previous.selectedFeature, previous.panelLevel);
+    }
+    
     updateBackButton();
 }
 
@@ -1032,3 +1044,4 @@ function updateBackButton() {
         btn.style.display = "none";
     }
 }
+

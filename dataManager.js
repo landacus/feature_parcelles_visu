@@ -171,3 +171,4 @@ export async function getUniquePrairieTypes() {
     const result = await conn.query(`SELECT DISTINCT libelle_group FROM 'data.parquet' WHERE libelle_group IS NOT NULL`);
     return result.toArray().map(r => r.libelle_group);
 }
+
