@@ -1045,3 +1045,102 @@ function updateBackButton() {
     }
 }
 
+document.getElementById("btn-scatter-all").addEventListener("click", async () => {
+
+    // Hide map
+    mapContainer.style.display = "none";
+
+    // Show scatter
+    scatterContainer.style.display = "block";
+
+    // Change main toggle text
+    document.getElementById("btn-scatter").innerText = "Carte";
+
+    // Hide hierarchical back button (important)
+    const backBtn = document.getElementById("scatter-back-btn");
+    if (backBtn) backBtn.style.display = "none";
+
+    // Load all parcels
+    const data = await DataManager.getAllParcellesData(selectedPrairies);
+
+    renderAllParcellesScatter(data);
+});
+
+async function renderAllParcellesScatter(data) {
+
+    const svg = d3.select("#scatter-svg");
+    svg.selectAll("*").remove();
+
+    const width = document.getElementById("scatter-container").clientWidth;
+    const height = document.getElementById("scatter-container").clientHeight;
+
+    const margin = { top: 40, right: 40, bottom: 60, left: 70 };
+
+    const g = svg.append("g")
+        .attr("transform", `translate(${margin.left},${margin.top})`);
+
+    const innerWidth = width - margin.left - margin.right;
+    const innerHeight = height - margin.top - margin.bottom;
+
+    const filtered = data.filter(d => d.altitude && d.pente);
+
+    if (!filtered.length) return;
+
+    const x = d3.scaleLinear()
+        .domain(d3.extent(filtered, d => d.altitude))
+        .nice()
+        .range([0, innerWidth]);
+
+    const y = d3.scaleLinear()
+        .domain(d3.extent(filtered, d => d.pente))
+        .nice()
+        .range([innerHeight, 0]);
+
+    g.append("g")
+        .attr("transform", `translate(0,${innerHeight})`)
+        .call(d3.axisBottom(x));
+
+    g.append("g")
+        .call(d3.axisLeft(y));
+
+    const tooltip = d3.select("#scatter-tooltip");
+
+    g.selectAll("circle")
+        .data(filtered)
+        .enter()
+        .append("circle")
+        .attr("cx", d => x(d.altitude))
+        .attr("cy", d => y(d.pente))
+        .attr("r", 2)
+        .attr("fill", "#e74c3c")
+        .attr("opacity", 0.35)
+        .on("mouseover", function(event, d) {
+            tooltip.style("opacity", 1)
+                .html(`
+                    <strong>Parcelle ${d.id}</strong><br>
+                    Altitude: ${d.altitude.toFixed(1)} m<br>
+                    Pente: ${d.pente.toFixed(1)} %
+                `);
+        })
+        .on("mousemove", function(event) {
+            tooltip
+                .style("left", (event.pageX + 15) + "px")
+                .style("top", (event.pageY - 28) + "px");
+        })
+        .on("mouseout", function() {
+            tooltip.style("opacity", 0);
+        });
+
+    svg.append("text")
+        .attr("x", width / 2)
+        .attr("y", height - 10)
+        .attr("text-anchor", "middle")
+        .text("Altitude moyenne (m)");
+
+    svg.append("text")
+        .attr("transform", "rotate(-90)")
+        .attr("x", -height / 2)
+        .attr("y", 20)
+        .attr("text-anchor", "middle")
+        .text("Pente moyenne (%)");
+}

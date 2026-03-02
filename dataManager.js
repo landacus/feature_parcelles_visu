@@ -172,3 +172,30 @@ export async function getUniquePrairieTypes() {
     return result.toArray().map(r => r.libelle_group);
 }
 
+export async function getAllParcellesData(filterTypes = []) {
+
+    if (!Array.isArray(filterTypes) || filterTypes.length === 0) {
+        return [];
+    }
+
+    const typesList = filterTypes
+        .map(t => `'${String(t).replace(/'/g, "''")}'`)
+        .join(',');
+
+    const query = `
+        SELECT
+            id_parcel as id,
+            SUM(CAST(surf_parc AS FLOAT)) as surface_totale,
+            SUM(CAST(alt_mean AS FLOAT) * CAST(surf_parc AS FLOAT))
+                / SUM(CAST(surf_parc AS FLOAT)) as altitude,
+            SUM(CAST(pente_mean AS FLOAT) * CAST(surf_parc AS FLOAT))
+                / SUM(CAST(surf_parc AS FLOAT)) as pente
+        FROM 'data.parquet'
+        WHERE libelle_group IN (${typesList}) AND surf_parc > 20
+        GROUP BY id_parcel
+    `;
+
+    const result = await conn.query(query);
+    return result.toArray();
+}
+
