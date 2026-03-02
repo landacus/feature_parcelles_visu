@@ -196,7 +196,7 @@ function updateSidePanel(feature, level) {
     if (stats) {
         document.getElementById("nb-parcelles").innerText = stats.nb_parcelles.toString().replace(/\B(?=(\d{3})+(?!\d))/g, " ");
         document.getElementById("alt-val").innerText = `${stats.altitude.toFixed(1)} m`;
-        document.getElementById("pente-val").innerText = `${stats.pente.toFixed(1)} %`;
+        document.getElementById("pente-val").innerText = `${stats.pente.toFixed(1)} °`;
         const top5Data = calculateTop5Data(stats.parcelles_details);
         drawTop5Chart(top5Data, "#top-prairies-chart");
     } else {
@@ -289,7 +289,7 @@ function updateLegendUI(min, max) {
     const legendAxis = d3.axisBottom(legendScale)
         .ticks(5)
         .tickFormat(d => {
-            const unit = currentIndicator === "altitude" ? "m" : "%";
+            const unit = currentIndicator === "altitude" ? "m" : "°";
             return `${Math.round(d)}${unit}`;
         });
 
@@ -697,7 +697,7 @@ function drawTop5Chart(data, containerSelector) {
                     <div style="display:grid; grid-template-columns: 1fr auto; gap:8px; font-size:12px;">
                         <span>Surface:</span> <b style="text-align:right">${d.surface.toFixed(3).toString().replace(/\B(?=(\d{3})+(?!\d))/g, " ")} ha</b>
                         <span>Altitude:</span> <b style="text-align:right">${d.alt.toFixed(0)} m</b>
-                        <span>Pente:</span> <b style="text-align:right">${d.pente.toFixed(1)} %</b>
+                        <span>Pente:</span> <b style="text-align:right">${d.pente.toFixed(1)} °</b>
                     </div>
                    `)
                    .style("left", (event.pageX + 15) + "px")
@@ -872,7 +872,7 @@ async function renderScatter(customFeatures = null, fromBack = false) {
                 .html(`
                     <strong>${d.nom}</strong><br>
                     Altitude: ${d.altitude.toFixed(1)} m<br>
-                    Pente: ${d.pente.toFixed(1)} %
+                    Pente: ${d.pente.toFixed(1)} °
                 `);
         })
         .on("mousemove", function(event) {
@@ -1009,7 +1009,7 @@ async function renderScatter(customFeatures = null, fromBack = false) {
         .attr("x", -height / 2)
         .attr("y", 20)
         .attr("text-anchor", "middle")
-        .text("Pente moyenne (%)");
+        .text("Pente moyenne (°)");
 
     updateBackButton();
 }
@@ -1119,7 +1119,7 @@ async function renderAllParcellesScatter(data) {
                 .html(`
                     <strong>Parcelle ${d.id}</strong><br>
                     Altitude: ${d.altitude.toFixed(1)} m<br>
-                    Pente: ${d.pente.toFixed(1)} %
+                    Pente: ${d.pente.toFixed(1)} °
                 `);
         })
         .on("mousemove", function(event) {
@@ -1142,5 +1142,5 @@ async function renderAllParcellesScatter(data) {
         .attr("x", -height / 2)
         .attr("y", 20)
         .attr("text-anchor", "middle")
-        .text("Pente moyenne (%)");
+        .text("Pente moyenne (°)");
 }
