@@ -196,7 +196,7 @@ function updateSidePanel(feature, level) {
     if (stats) {
         document.getElementById("nb-parcelles").innerText = stats.nb_parcelles.toString().replace(/\B(?=(\d{3})+(?!\d))/g, " ");
         document.getElementById("alt-val").innerText = `${stats.altitude.toFixed(1)} m`;
-        document.getElementById("pente-val").innerText = `${stats.pente.toFixed(1)} °`;
+        document.getElementById("pente-val").innerText = `${stats.pente.toFixed(1)}°`;
         const top5Data = calculateTop5Data(stats.parcelles_details);
         drawTop5Chart(top5Data, "#top-prairies-chart");
     } else {
@@ -679,8 +679,7 @@ function drawTop5Chart(data, containerSelector) {
         .domain([0, d3.max(data, d => d.surface)])
         .range([0, width]);
 
-    const colorScale = d3.scaleOrdinal()
-        .range(["#3b82f6", "#6366f1", "#8b5cf6", "#a855f7", "#d946ef"]);
+    const color = "#bebebe";
 
     let tooltip = d3.select(".chart-tooltip");
     if (tooltip.empty()) tooltip = d3.select("body").append("div").attr("class", "chart-tooltip");
@@ -697,7 +696,7 @@ function drawTop5Chart(data, containerSelector) {
                     <div style="display:grid; grid-template-columns: 1fr auto; gap:8px; font-size:12px;">
                         <span>Surface:</span> <b style="text-align:right">${d.surface.toFixed(3).toString().replace(/\B(?=(\d{3})+(?!\d))/g, " ")} ha</b>
                         <span>Altitude:</span> <b style="text-align:right">${d.alt.toFixed(0)} m</b>
-                        <span>Pente:</span> <b style="text-align:right">${d.pente.toFixed(1)} °</b>
+                        <span>Pente:</span> <b style="text-align:right">${d.pente.toFixed(1)}°</b>
                     </div>
                    `)
                    .style("left", (event.pageX + 15) + "px")
@@ -715,7 +714,7 @@ function drawTop5Chart(data, containerSelector) {
         .attr("y", d => y(d.culture))
         .attr("height", y.bandwidth())
         .attr("width", 0)
-        .attr("fill", (d, i) => colorScale(i))
+        .attr("fill", color)
         .attr("rx", 4)
         .transition().duration(800)
         .attr("width", d => Math.max(x(d.surface), 40));
@@ -728,7 +727,7 @@ function drawTop5Chart(data, containerSelector) {
         .style("font-weight", "bold")
         .style("font-size", "12px")
         .style("pointer-events", "none")
-        .text(d => `${d.surface.toFixed(3).toString().replace(/\B(?=(\d{3})+(?!\d))/g, " ")} ha`);
+        .text(d => `${d.culture}: ${d.surface.toFixed(3).toString().replace(/\B(?=(\d{3})+(?!\d))/g, " ")} ha`);
 }
 
 
@@ -872,7 +871,7 @@ async function renderScatter(customFeatures = null, fromBack = false) {
                 .html(`
                     <strong>${d.nom}</strong><br>
                     Altitude: ${d.altitude.toFixed(1)} m<br>
-                    Pente: ${d.pente.toFixed(1)} °
+                    Pente: ${d.pente.toFixed(1)}°
                 `);
         })
         .on("mousemove", function(event) {
@@ -1119,7 +1118,7 @@ async function renderAllParcellesScatter(data) {
                 .html(`
                     <strong>Parcelle ${d.id}</strong><br>
                     Altitude: ${d.altitude.toFixed(1)} m<br>
-                    Pente: ${d.pente.toFixed(1)} °
+                    Pente: ${d.pente.toFixed(1)}°
                 `);
         })
         .on("mousemove", function(event) {
