@@ -1,105 +1,38 @@
 import * as duckdb from 'https://cdn.jsdelivr.net/npm/@duckdb/duckdb-wasm@1.28.0/+esm';
 let db, conn;
-let initPromise = null;
-
-const PARQUET_CHUNKS = ['data.parquet.aa', 'data.parquet.ab', 'data.parquet.ac', 'data.parquet.ad'];
-const MERGED_PARQUET_CACHE_NAME = 'parquet-merged-cache-v1';
-const MERGED_PARQUET_CACHE_KEY = 'data.parquet.merged.v1';
 
 // Initialisation de DuckDB et chargement du fichier parquet fusionné
 // Car pour github on a dû découper le fichier en 4 morceaux (data.parquet.aa, ab, ac, ad) pour respecter la limite de 100Mo par fichier
 export async function initData() {
-    if (conn) {
-        return;
-    }
-
-    if (initPromise) {
-        await initPromise;
-        return;
-    }
-
-    const initStart = performance.now();
     console.log("Démarrage du moteur DuckDB...");
+    
+    const JSDELIVR_BUNDLES = duckdb.getJsDelivrBundles();
+    const bundle = await duckdb.selectBundle(JSDELIVR_BUNDLES);
+    const worker_url = URL.createObjectURL(
+        new Blob([`importScripts("${bundle.mainWorker}");`], {type: 'text/javascript'})
+    );
 
-    initPromise = (async () => {
-        const JSDELIVR_BUNDLES = duckdb.getJsDelivrBundles();
-        const bundle = await duckdb.selectBundle(JSDELIVR_BUNDLES);
-        const worker_url = URL.createObjectURL(
-            new Blob([`importScripts("${bundle.mainWorker}");`], {type: 'text/javascript'})
-        );
+    const worker = new Worker(worker_url);
+    const logger = new duckdb.ConsoleLogger();
+    
+    db = new duckdb.AsyncDuckDB(logger, worker); 
+    await db.instantiate(bundle.mainModule, bundle.pthreadWorker);
+    URL.revokeObjectURL(worker_url);
 
-        const worker = new Worker(worker_url);
-        const logger = new duckdb.ConsoleLogger();
+    conn = await db.connect(); 
 
-        db = new duckdb.AsyncDuckDB(logger, worker);
-        await db.instantiate(bundle.mainModule, bundle.pthreadWorker);
-        URL.revokeObjectURL(worker_url);
+    console.log("Chargement et fusion des fichiers parquet");
+    const arrayBuffer = await fetchAndMerge();
+    
+    await db.registerFileBuffer('data.parquet', new Uint8Array(arrayBuffer));
 
-        conn = await db.connect();
-
-        console.log("Chargement parquet fusionné (cache navigateur activé)");
-        const mergeStart = performance.now();
-        const parquetData = await getMergedParquetData();
-        console.log(`Parquet prêt en ${Math.round(performance.now() - mergeStart)} ms (${Math.round(parquetData.byteLength / (1024 * 1024))} Mo)`);
-
-        await db.registerFileBuffer('data.parquet', parquetData);
-
-        console.log(`DuckDB prêt avec data.parquet fusionné en ${Math.round(performance.now() - initStart)} ms`);
-    })();
-
-    try {
-        await initPromise;
-    } finally {
-        initPromise = null;
-    }
-}
-
-function supportsPersistentCache() {
-    return typeof caches !== 'undefined';
-}
-
-async function getMergedParquetData() {
-    if (!supportsPersistentCache()) {
-        return fetchAndMerge();
-    }
-
-    try {
-        const cache = await caches.open(MERGED_PARQUET_CACHE_NAME);
-        const cachedResponse = await cache.match(MERGED_PARQUET_CACHE_KEY);
-
-        if (cachedResponse) {
-            const cachedBuffer = await cachedResponse.arrayBuffer();
-            console.log("Parquet fusionné chargé depuis le cache navigateur");
-            return new Uint8Array(cachedBuffer);
-        }
-
-        const mergedData = await fetchAndMerge();
-        await cache.put(
-            MERGED_PARQUET_CACHE_KEY,
-            new Response(mergedData, {
-                headers: {
-                    'content-type': 'application/octet-stream'
-                }
-            })
-        );
-
-        console.log("Parquet fusionné mis en cache navigateur");
-        return mergedData;
-    } catch (err) {
-        console.warn("Cache navigateur indisponible, fusion en direct", err);
-        return fetchAndMerge();
-    }
+    console.log("DuckDB prêt avec data.parquet fusionné");
 }
 
 // Fonction pour récupérer les 4 morceaux du fichier parquet, les fusionner
 async function fetchAndMerge() {
-    const promises = PARQUET_CHUNKS.map(async (url) => {
-        const res = await fetch(url);
-        if (!res.ok) {
-            throw new Error(`Échec du chargement de ${url} (${res.status})`);
-        }
-        return res.arrayBuffer();
-    });
+    const chunks = ['data.parquet.aa', 'data.parquet.ab', 'data.parquet.ac', 'data.parquet.ad'];
+    const promises = chunks.map(url => fetch(url).then(res => res.arrayBuffer()));
     const buffers = await Promise.all(promises);
     const totalLength = buffers.reduce((acc, buf) => acc + buf.byteLength, 0);
     const combinedArray = new Uint8Array(totalLength);
