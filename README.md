@@ -1,6 +1,10 @@
-# Visualisation-Prairie
+# Visualisation des parcelles en France métropolitaine
 
-On a les infos par parcelle avec les geopackage (lourd)
+Nous souhaitons visualiser les parcelles en France métropolitaine, en particulier les caractéristiques géographiques (pente, altitude), puis dans un second temps les cultures.
+Pour se faire, nous avons utilisé les données provenant de https://geoservices.ign.fr/rpg et https://entrepot.recherche.data.gouv.fr/dataverse/RPG_sol_climat
+Nous avons réalisé une solution qui se veut être une application web de visualisation des données, qui créée une cohérence entre les différentes informations et les différents graphiques au même endroit à la manière d'un cockpit.
+Les informations d'altitude et de pente sont cohérentes avec les données géographiques d'autres sites. Il est possible de naviguer directement vers une zone à l'aide du moteur de recherche qui fonctionne avec des api et de la liste des pays/départements/communes ou d'utiliser la carte et le scatter plot.
+Les scripts de prétraitement des données sont dans le dossier "pretraitement" dans le repo GitHub.
 
 ## Lien des documentations :
 - https://geoservices.ign.fr/sites/default/files/2025-12/DC_DL_RPG_3-0.pdf
