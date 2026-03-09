@@ -18,7 +18,11 @@
             <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
         </div>
         <div class="modal-body">
-            ...
+            <b> MaParcelle </b> présente deux visualisations de l'altitude et de la pente des parcelles de France. <br> La première est exploratoire et comporte une carte de la France, sur laquelle il est possible de naviguer pour choisir une région, puis un département, puis une commune, tout en ayant les données correspondantes pour chaque niveau. Les couleurs sont mises à jour pour rendre compte des zones les plus hautes/pentues (un bouton permet de changer de l'un à l'autre). <br> La deuxième visualisation cherche à montrer une éventuelle corrélation entre l'altitude et la pente des parcelles de France. Pour cela, un scatterplot est tracé avec le même mécanisme de navigation entre les régions, départements et communes. Il est à noter que lorsque l'on navigue sur la carte, le scatter plot se met à jour automatiquement si l'on clique sur <em> Scatter Plot </em>. Cependant cela ne fonctionne pas dans l'autre sens (si l'on navigue sur le scatter plot et qu'on passe sur la carte). <br>
+            Il est aussi possible d'afficher un scatter plot avec les parcelles individuelles. Cependant, dû au très grand nombre de données (plus de 8 millions de parcelles), ce graphique est limité aux parcelles ayant une surface supérieure à 20 hectares. Il est aussi déconseillé de cliquer sur les points car cela peut ralentir la page web.
+            <br>
+            La source utilisée est le <b> RPG </b> (Registre Parcellaire Graphique) pour l'année 2023 : <a href="https://geoservices.ign.fr/rpg">https://geoservices.ign.fr/rpg</a>, <a href="https://entrepot.recherche.data.gouv.fr/dataverse/RPG_sol_climat">https://entrepot.recherche.data.gouv.fr/dataverse/RPG_sol_climat</a>. <br>
+            Ces données sont très volumineuses. Nous avons supprimé toutes les données dont nous n'avons pas besoin puis nous avons utilisé le format <em>.parquet</em> pour stocker les données agrégées qui nous sont utiles. <em>Duckdb</em> a ensuite été utilisé pour faire des requêtes SQL dans ce fichier. Aussi le fichier <em>.parquet</em> a été divisé en 4 pour éviter la limite de taille d'hébergement sur GitHub.
         </div>
         <div class="modal-footer">
             <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fermer</button>
