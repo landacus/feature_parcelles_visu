@@ -1,9 +1,13 @@
 # Visualisation des parcelles en France métropolitaine
 
 Nous souhaitons visualiser les parcelles en France métropolitaine, en particulier les caractéristiques géographiques (pente, altitude), puis dans un second temps les cultures.
-Pour se faire, nous avons utilisé les données provenant de https://geoservices.ign.fr/rpg et https://entrepot.recherche.data.gouv.fr/dataverse/RPG_sol_climat
+
+Pour se faire, nous avons utilisé les données provenant de https://geoservices.ign.fr/rpg et https://entrepot.recherche.data.gouv.fr/dataverse/RPG_sol_climat.
+
 Nous avons réalisé une solution qui se veut être une application web de visualisation des données, qui créée une cohérence entre les différentes informations et les différents graphiques au même endroit à la manière d'un cockpit.
+
 Les informations d'altitude et de pente sont cohérentes avec les données géographiques d'autres sites. Il est possible de naviguer directement vers une zone à l'aide du moteur de recherche qui fonctionne avec des api et de la liste des pays/départements/communes ou d'utiliser la carte et le scatter plot.
+
 Les scripts de prétraitement des données sont dans le dossier "pretraitement" dans le repo GitHub.
 
 ## Lien des documentations :
@@ -20,9 +24,9 @@ Les scripts de prétraitement des données sont dans le dossier "pretraitement" 
 - culture_d2 : Code culture dérobée 2 
 - surf_parc : Surface en hectares de la parcelle (hectare)
 
---> Pour les codes cultures, voir le fichier REF_CULTURES_2023.csv qui répertorie les codes et libellés (lien dans la documentation geoservices)
+Pour les codes cultures, voir le fichier REF_CULTURES_2023.csv qui répertorie les codes et libellés (lien dans la documentation geoservices)
 
---> une culture dérobée, c'est une plante que l'agriculteur sème entre deux cultures principales. Elle vient dérober un peu de temps et d'espace sur une période de l'année où le champ serait normalement resté nu. Puisqu'on travaille spécifiquement sur les prairies (de l'herbe qui pousse toute l'année), le sol n'est par définition jamais nu. Il n'y a donc quasiment jamais de culture dérobée sur une parcelle déclarée en prairie d'où les colonnes 'culture_d1' et "culture_d2' vides en général.
+une culture dérobée, c'est une plante que l'agriculteur sème entre deux cultures principales. Elle vient dérober un peu de temps et d'espace sur une période de l'année où le champ serait normalement resté nu. Puisqu'on travaille spécifiquement sur les prairies (de l'herbe qui pousse toute l'année), le sol n'est par définition jamais nu. Il n'y a donc quasiment jamais de culture dérobée sur une parcelle déclarée en prairie d'où les colonnes 'culture_d1' et "culture_d2' vides en général.
 
 
 ### RPG2023_sol_climat : 
@@ -44,7 +48,7 @@ Les scripts de prétraitement des données sont dans le dossier "pretraitement" 
 - libelle_culture : description du code culture (ex: vanille verte)
 
 
---> Pour obtenir parcelles_consolidees.csv on a fait une jointure avec id_parcel comme clé
+Pour obtenir parcelles_consolidees.csv on a fait une jointure avec id_parcel comme clé
 Le fichier à la structure suivante : 
 - id_parcel
 - surf_parc : Surface en hectares de la parcelle (hectare)
@@ -66,29 +70,23 @@ Le fichier à la structure suivante :
 ## Visualisation des données : 
 
 1. Carte de France : 
---> On choisit à quelle échelle on visualise les prairies : 
+On choisit à quelle échelle on visualise les prairies : 
 - région
 - département
 - commune
---> Légende :
-- couleur = altitude moyenne
-- inclinaison flèche = pente moyenne
+Légende :
+- couleur = altitude moyenne / pente moyenne
 
 2. Filtres :
-On peut filtrer sur un histogramme selon l'intervalle (on sélectionne un min et max sur l'histogramme) sur :
-- alt_min
-- alt_max
-- pente_mean
 On peut filtrer aussi selon : 
-- code_cultu / libelle_culture
 - code_group / libelle_group
 
 Quand on clique sur une entité (région / département / commune), on voit : 
 - le nom de l'entité (région / département / commune)
 - la surface totale en prairie
 - le nombre de prairie
-- un mini histogramme de pente et d'altitude avec les valeurs moyennes
-- le top 3 des groupes de culture avec 
+- la pente et l'altitude avec les valeurs moyennes
+- le top 5 des groupes de parcelles avec 
 	- leur pourcentage en surface
 	- la pente moyenne
 	- l'altitude moyenne
